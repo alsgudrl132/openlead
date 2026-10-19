@@ -733,6 +733,38 @@ def send_now(cust: dict) -> None:
     deliver(cust, build_message(db(), cust, since))
 
 
+def owner_command(text: str, c: sqlite3.Connection) -> None:
+    """운영자 명령 처리. 봇 메시지에서도, Actions 수동 실행(admin)에서도 같은 함수."""
+    parts = [p.strip() for p in text.split("|")]
+    regions = parse_regions(parts[2]) if len(parts) >= 3 else parse_regions(text)
+    if parts[0] == "추가":
+        if len(parts) < 3 or not regions:
+            tg_api("sendMessage", chat_id=OWNER, text="형식: 추가 | 이메일(또는 chat_id) | 구역 | 업체명 [| 유료]\n구역 예: 서울 / 강남구, 서초구 / 수원시 / 경기")
+        name = parts[3] if len(parts) > 3 else parts[1]
+        paid = any(x.strip() == "유료" for x in parts[3:])      # 끝에 '유료' 없으면 2주 체험
+        if name == "유료":
+            name = parts[1]
+        add_customer(parts[1], regions, name, paid=paid)
+        warn = "" if region_has_data(c, regions) else "\n주의: 이 구역은 아직 수집하지 않아 리스트가 비어 있습니다. 켜달라고 말씀해 주세요."
+        try:
+            send_now({"name": name, "regions": regions, "types": [],
+                      "email": parts[1] if "@" in parts[1] and not parts[1].startswith("@") else None,
+                      "chat_id": None if "@" in parts[1] else parts[1]})
+            sent = "이번 주 리스트를 지금 보냈습니다."
+        except Exception as e:  # noqa: BLE001
+            sent = f"바로 보내기 실패: {e}"
+        tg_api("sendMessage", chat_id=OWNER, text=f"추가됨({'유료' if paid else '체험 2주'}): {parts[1]} / {', '.join(regions)} / {name}\n{sent}{warn}")
+    elif parts[0] == "제거" and len(parts) >= 2:
+        remove_customer(parts[1])
+        tg_api("sendMessage", chat_id=OWNER, text=f"제거됨: {parts[1]}")
+    elif parts[0] == "명단":
+        tg_api("sendMessage", chat_id=OWNER, text="\n".join(
+            f"{x['name']} | {x.get('email') or x.get('chat_id')} | {', '.join(x['regions'])} | {'유료' if x.get('paid') else '체험 ' + x['ts']}"
+            for x in customers_all()) or "(비어 있음)")
+    else:
+        tg_api("sendMessage", chat_id=OWNER, text="명령: 추가 | 연락처 | 구역 | 업체명  /  제거 | 연락처  /  명단")
+
+
 def cmd_signups() -> None:
     """봇에 온 메시지를 읽는다. 운영자: 추가|연락처|구역|이름 / 제거|연락처 / 명단. 신청자: 신청|업체|구역|이메일. 서버 없이 폴링."""
     off_path = os.path.join(os.path.dirname(DB_PATH) or ".", "tg_offset.txt")
@@ -752,33 +784,7 @@ def cmd_signups() -> None:
         parts = [p.strip() for p in text.split("|")]
         regions = parse_regions(parts[2]) if len(parts) >= 3 else parse_regions(text)   # 구역 칸만 읽어 '도시락집' 오인 방지
         if chat == OWNER:
-            if parts[0] == "추가":
-                if len(parts) < 3 or not regions:
-                    tg_api("sendMessage", chat_id=OWNER, text="형식: 추가 | 이메일(또는 chat_id) | 구역 | 업체명 [| 유료]\n구역 예: 서울 / 강남구, 서초구 / 수원시 / 경기")
-                    continue
-                name = parts[3] if len(parts) > 3 else parts[1]
-                paid = any(x.strip() == "유료" for x in parts[3:])      # 끝에 '유료' 없으면 2주 체험
-                if name == "유료":
-                    name = parts[1]
-                add_customer(parts[1], regions, name, paid=paid)
-                warn = "" if region_has_data(c, regions) else "\n주의: 이 구역은 아직 수집하지 않아 리스트가 비어 있습니다. 켜달라고 말씀해 주세요."
-                try:
-                    send_now({"name": name, "regions": regions, "types": [],
-                              "email": parts[1] if "@" in parts[1] and not parts[1].startswith("@") else None,
-                              "chat_id": None if "@" in parts[1] else parts[1]})
-                    sent = "이번 주 리스트를 지금 보냈습니다."
-                except Exception as e:  # noqa: BLE001
-                    sent = f"바로 보내기 실패: {e}"
-                tg_api("sendMessage", chat_id=OWNER, text=f"추가됨({'유료' if paid else '체험 2주'}): {parts[1]} / {', '.join(regions)} / {name}\n{sent}{warn}")
-            elif parts[0] == "제거" and len(parts) >= 2:
-                remove_customer(parts[1])
-                tg_api("sendMessage", chat_id=OWNER, text=f"제거됨: {parts[1]}")
-            elif parts[0] == "명단":
-                tg_api("sendMessage", chat_id=OWNER, text="\n".join(
-                    f"{x['name']} | {x.get('email') or x.get('chat_id')} | {', '.join(x['regions'])} | {'유료' if x.get('paid') else '체험 ' + x['ts']}"
-                    for x in customers_all()) or "(비어 있음)")
-            else:
-                tg_api("sendMessage", chat_id=OWNER, text="명령: 추가 | 연락처 | 구역 | 업체명  /  제거 | 연락처  /  명단")
+            owner_command(text, c)
             continue
         if parts[0].startswith("신청") and regions:
             biz = parts[1] if len(parts) > 1 else label
@@ -878,7 +884,7 @@ def email(to: str, subject: str, html_body: str) -> None:
 
 
 def cmd_send(dry: bool) -> None:
-    customers = json.loads(os.environ.get("CUSTOMERS_JSON", "[]")) + active_customers()
+    customers = active_customers()                       # 명단은 signups.jsonl 하나로만 관리 (CUSTOMERS_JSON 은 더 이상 안 씀)
     since = (date.today() - timedelta(days=WEEK_DAYS)).strftime("%Y%m%d")
     c = db()
     for cust in customers:
@@ -924,4 +930,5 @@ if __name__ == "__main__":
      "test-email": lambda: email(os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), "[오픈리드] 이메일 발송 테스트",
                                  "<p>이 메일이 보이면 Gmail 발송 설정이 끝난 겁니다. 매주 월요일 08:00 리스트가 이 형식으로 갑니다.</p>"),
      "notices": cmd_notices,
+     "admin": lambda: owner_command(os.environ.get("ADMIN_CMD", ""), db()),
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()

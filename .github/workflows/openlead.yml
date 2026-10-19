@@ -7,11 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: collect(=filesync) | filesync | send | send-dry | probe | backfill | signups | notices | test-email | send-seoul-test
+        description: collect(=filesync) | filesync | send | send-dry | probe | backfill | signups | notices | admin | test-email | send-seoul-test
         default: collect
       pages:
         description: backfill 페이지 예산 (기본 9000)
         default: "9000"
+      cmd:
+        description: admin 작업용 운영자 명령 (예 "제거 | a@b.com")
+        default: ""
 
 permissions:
   contents: read
@@ -55,6 +58,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
           BACKFILL_PAGES: ${{ github.event.inputs.pages || '9000' }}
+          ADMIN_CMD: ${{ github.event.inputs.cmd }}
         run: |
           mkdir -p data
           case "${{ steps.j.outputs.job }}" in
