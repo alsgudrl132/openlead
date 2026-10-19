@@ -326,15 +326,25 @@ def cmd_signups() -> None:
         m = u.get("message") or {}
         chat = str((m.get("chat") or {}).get("id") or "")
         text = (m.get("text") or "").strip()
-        if not chat or chat == OWNER or not text or text == "/start":
+        if not chat or not text or text == "/start":
             continue
         who = (m.get("from") or {})
         label = who.get("username") and "@" + who["username"] or who.get("first_name") or chat
         regions = re.findall(r"[가-힣]+구", text)
+        if chat == OWNER:                                # 운영자 명령: 추가 | 연락처 | 구들 | 이름   /  제거 | 연락처
+            parts = [p.strip() for p in text.split("|")]
+            if parts[0] == "추가" and len(parts) >= 3 and regions:
+                add_customer(parts[1], regions, parts[3] if len(parts) > 3 else parts[1], paid=True)
+                tg_api("sendMessage", chat_id=OWNER, text=f"추가됨: {parts[1]} / {', '.join(regions)}")
+            elif parts[0] == "제거" and len(parts) >= 2:
+                remove_customer(parts[1])
+                tg_api("sendMessage", chat_id=OWNER, text=f"제거됨: {parts[1]}")
+            elif parts[0] == "명단":
+                tg_api("sendMessage", chat_id=OWNER, text="\n".join(f"{c['name']} | {c.get('email') or c.get('chat_id')} | {', '.join(c['regions'])}"
+                                                               f" | {'유료' if c.get('paid') else '체험 ' + c['ts']}" for c in customers_all()) or "(비어 있음)")
+            continue
         if text.startswith("신청") and regions:
-            with open(SIGNUPS, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"chat_id": chat, "name": label, "regions": regions, "text": text,
-                                    "ts": date.today().isoformat()}, ensure_ascii=False) + "\n")
+            add_customer(chat, regions, label, paid=False, text=text)
             tg_api("sendMessage", chat_id=chat, text=f"접수됐습니다. {', '.join(regions)} 리스트가 다음 월요일 08:00에 옵니다. 2주 무료입니다.")
             tg_api("sendMessage", chat_id=OWNER, text=f"[신청] {label} ({chat})\n{text}")
             n += 1
@@ -345,26 +355,70 @@ def cmd_signups() -> None:
     print(f"signups new={n} offset={offset}")
 
 
-def trial_customers() -> list[dict]:
-    """체험 기간(TRIAL_DAYS) 안인 신청자. 기간이 지나면 CUSTOMERS_JSON 에 옮겨야 계속 받는다."""
+def customers_all() -> list[dict]:
+    """signups.jsonl 의 현재 명단. 연락처(이메일 또는 텔레그램 chat_id)당 마지막 줄이 유효, removed 면 제외."""
     if not os.path.exists(SIGNUPS):
         return []
-    out = []
+    byid: dict[str, dict] = {}
     for ln in open(SIGNUPS, encoding="utf-8"):
         s = json.loads(ln)
-        if (date.today() - date.fromisoformat(s["ts"])).days <= TRIAL_DAYS:
-            out.append({"name": s["name"] + " (체험)", "chat_id": s["chat_id"], "regions": s["regions"], "types": []})
+        key = s.get("email") or s.get("chat_id")
+        if s.get("removed"):
+            byid.pop(key, None)
+        else:
+            byid[key] = s
+    return list(byid.values())
+
+
+def add_customer(contact: str, regions: list[str], name: str, paid: bool, text: str = "") -> None:
+    rec = {"name": name, "regions": regions, "paid": paid, "text": text, "ts": date.today().isoformat()}
+    rec["email" if "@" in contact and not contact.startswith("@") else "chat_id"] = contact
+    os.makedirs(os.path.dirname(SIGNUPS) or ".", exist_ok=True)
+    with open(SIGNUPS, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def remove_customer(contact: str) -> None:
+    key = "email" if "@" in contact and not contact.startswith("@") else "chat_id"
+    with open(SIGNUPS, "a", encoding="utf-8") as f:
+        f.write(json.dumps({key: contact, "removed": True, "ts": date.today().isoformat()}, ensure_ascii=False) + "\n")
+
+
+def active_customers() -> list[dict]:
+    """유료(paid)는 계속, 체험은 TRIAL_DAYS 까지만."""
+    out = []
+    for s in customers_all():
+        if s.get("paid") or (date.today() - date.fromisoformat(s["ts"])).days <= TRIAL_DAYS:
+            out.append({"name": s["name"] + ("" if s.get("paid") else " (체험)"), "chat_id": s.get("chat_id"),
+                        "email": s.get("email"), "regions": s["regions"], "types": []})
     return out
 
 
+def email(to: str, subject: str, html_body: str) -> None:
+    """Gmail SMTP (앱 비밀번호). GMAIL_USER / GMAIL_APP_PASSWORD 환경변수."""
+    import smtplib
+    from email.mime.text import MIMEText
+    user, pw = os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), os.environ["GMAIL_APP_PASSWORD"]
+    msg = MIMEText(html_body, "html", "utf-8")
+    msg["Subject"], msg["From"], msg["To"] = subject, f"오픈리드 <{user}>", to
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=60) as s:
+        s.login(user, pw)
+        s.sendmail(user, [to], msg.as_string())
+
+
 def cmd_send(dry: bool) -> None:
-    customers = json.loads(os.environ.get("CUSTOMERS_JSON", "[]")) + trial_customers()
+    customers = json.loads(os.environ.get("CUSTOMERS_JSON", "[]")) + active_customers()
     since = (date.today() - timedelta(days=WEEK_DAYS)).strftime("%Y%m%d")
     c = db()
     for cust in customers:
         msg = build_message(c, cust, since)
+        to = cust.get("email") or cust.get("chat_id")
         if dry:
-            print(f"--- {cust.get('name')} ({cust.get('chat_id')})\n{msg}")
+            print(f"--- {cust.get('name')} ({to})\n{msg}")
+        elif cust.get("email"):
+            first = msg.split("\n", 1)[0]
+            email(cust["email"], first, "<div style='font:15px/1.6 sans-serif;white-space:pre-wrap'>" + msg + "</div>")
+            print("emailed:", cust.get("name"))
         else:
             telegram(cust["chat_id"], msg)
             print("sent:", cust.get("name"))

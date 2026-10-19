@@ -58,10 +58,10 @@
 </head>
 <body>
 <div class="wrap">
-  <span class="kicker">서울 구 단위 · 매주 월요일 08:00 · 텔레그램</span>
+  <span class="kicker">서울 구 단위 · 매주 월요일 08:00 · 이메일 / 텔레그램</span>
   <h1>문 닫는 가게를<br>제일 먼저 아는 쪽이<br><mark>먼저 전화합니다.</mark></h1>
   <p class="lead">구청에 폐업 신고가 접수된 식당을 매주 월요일 아침 텔레그램으로 정리해 드립니다. 영업하던 가게라 전화번호가 그대로 조회됩니다. 중고 주방기기 매입, 상가 임대 중개, 철거·원상복구 쪽이라면 신고 다음 주에 바로 연락할 수 있습니다. 같은 주에 새로 문 연 가게도 함께 보내 드립니다.</p>
-  <a class="cta" href="#signup">첫 2주 무료로 받기<small>카드 등록 없음 · 텔레그램만 있으면 됩니다</small></a>
+  <a class="cta" href="#signup">첫 2주 무료로 받기<small>카드 등록 없음 · 이메일이나 텔레그램으로 받습니다</small></a>
 
   <div class="rowhead" id="closed-head" hidden><h2>지난주 강남구·서초구 폐업 신고 샘플</h2><span>실제 발송분에서 발췌</span></div>
   <ul class="rows" id="closed-rows" hidden></ul>
@@ -77,7 +77,7 @@
   </ul>
 
   <div class="steps">
-    <div><h3>1. 월요일 아침에 옵니다</h3><p>텔레그램 한 통. 구 단위로 묶어서 폐업 신고를 먼저, 신규 개업을 뒤에 보냅니다. 앱 설치도 로그인도 없습니다.</p></div>
+    <div><h3>1. 월요일 아침에 옵니다</h3><p>이메일 한 통(원하면 텔레그램). 구 단위로 묶어서 폐업 신고를 먼저, 신규 개업을 뒤에 보냅니다. 앱 설치도 로그인도 없습니다.</p></div>
     <div><h3>2. 상호를 누르면 전화번호</h3><p>폐업 가게는 몇 년 영업한 곳이라 지도에 번호가 남아 있습니다. 누르면 바로 뜨고, 주소로 건물 위치도 봅니다.</p></div>
     <div><h3>3. 명의변경은 걸러서</h3><p>같은 자리에 같은 업종이 바로 다시 신고되면 사장만 바뀐 겁니다. 그건 폐업 리스트에서 뺍니다. 헛전화를 줄이는 게 이 리스트의 일입니다.</p></div>
   </div>
@@ -98,15 +98,16 @@
     <h2>사전 신청</h2>
     <label>업체명 / 하시는 일<input id="biz" required placeholder="예: ○○주방 (중고 주방기기 매입) / ○○공인중개사"></label>
     <label>받고 싶은 구역 (서울, 구 단위)<input id="region" required placeholder="예: 강남구, 서초구"></label>
+    <label>리스트 받을 이메일<input id="email" type="email" required placeholder="name@company.com"></label>
     <button type="submit">무료로 받아보기</button>
     <div class="after" id="after">
-      <p><b>마지막 한 단계.</b> 아래 내용이 텔레그램 봇으로 전달되면 접수됩니다. 버튼을 누르면 봇 대화방이 열리니 붙여넣어 보내주세요.</p>
+      <p><b>마지막 한 단계.</b> 아래 내용을 복사해서 카카오 오픈채팅에 보내주시면 접수됩니다. 다음 월요일 08:00부터 이메일로 갑니다.</p>
       <textarea id="msg" readonly></textarea>
       <div class="row">
         <button type="button" class="copy" id="copy">내용 복사</button>
-        <a class="go" id="go" href="https://t.me/openlead_alert_bot" target="_blank" rel="noopener">텔레그램 봇 열기</a>
+        <a class="go" id="go" href="https://open.kakao.com/o/sao406Si" target="_blank" rel="noopener">카카오 오픈채팅 열기</a>
       </div>
-      <p style="font-size:13px;color:#555">다음 월요일 08:00에 첫 리스트가 갑니다. 2주 뒤 계속 받을지 여쭤봅니다.</p>
+      <p style="font-size:13px;color:#555">텔레그램이 편하시면 <a href="https://t.me/openlead_alert_bot" target="_blank" rel="noopener">봇</a>에 같은 내용을 보내셔도 됩니다. 2주 뒤 계속 받을지 여쭤봅니다.</p>
     </div>
   </form>
 
@@ -118,8 +119,8 @@
   var f=document.getElementById('signup'),after=document.getElementById('after'),msg=document.getElementById('msg');
   f.addEventListener('submit',function(e){
     e.preventDefault();
-    var biz=document.getElementById('biz').value.trim(),region=document.getElementById('region').value.trim();
-    msg.value='신청 | '+biz+' | '+region;
+    var biz=document.getElementById('biz').value.trim(),region=document.getElementById('region').value.trim(),em=document.getElementById('email').value.trim();
+    msg.value='신청 | '+biz+' | '+region+' | '+em;
     after.classList.add('on'); msg.focus(); msg.select();
   });
   document.getElementById('copy').addEventListener('click',function(){

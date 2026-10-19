@@ -52,6 +52,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CUSTOMERS_JSON: ${{ secrets.CUSTOMERS_JSON }}
           OPENLEAD_COLLECT: ${{ secrets.OPENLEAD_COLLECT }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           BACKFILL_PAGES: ${{ github.event.inputs.pages || '9000' }}
         run: |
           mkdir -p data
