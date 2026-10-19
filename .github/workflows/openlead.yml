@@ -43,5 +43,6 @@ jobs:
         run: |
           case "${{ steps.j.outputs.job }}" in
             send-dry) python openlead.py send --dry ;;
+            collect)  python openlead.py collect && python openlead.py backfill ;;   # 전체 스캔 3일 주기 → 폐업 갱신
             *)        python openlead.py ${{ steps.j.outputs.job }} ;;
           esac

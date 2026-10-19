@@ -186,7 +186,7 @@ def cmd_backfill() -> None:
     for _ in range(budget):
         p = fetch_page("info", page, 100)
         if not p["items"]:
-            print("backfill done at page", page); break
+            print("backfill cycle done at page", page); page = 1; break   # 한 바퀴 끝 → 처음부터 (폐업 갱신용 주기 스캔)
         kept += upsert(c, [i for i in p["items"] if in_region(i, regions)], date.today().isoformat())
         page += 1
         if page % 200 == 0:
@@ -195,31 +195,59 @@ def cmd_backfill() -> None:
     print(f"backfill next_page={page} kept={kept}")
 
 
+def fmt_line(addr, road, name, biz, d, tel) -> str:
+    toks = (addr or "").split()
+    dong = toks[2] if len(toks) > 2 else ""
+    full = road or addr or ""
+    bldg = full.split(",")[0]                           # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
+    name_link = ("https://alsgudrl132.github.io/openlead/phone.html?"
+                 + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg}))
+    addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
+    return (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {d[4:6]}/{d[6:]}'
+            f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {tel}" if tel else "") + "\n")
+
+
+def in_cust_region(cust: dict, addr, road) -> bool:
+    return any(x in (addr or "") + (road or "") for x in cust["regions"])
+
+
+def is_transfer_close(c: sqlite3.Connection, mgt_no: str, addr, road, biz, close_ymd: str) -> bool:
+    """폐업했지만 같은 자리·같은 업태로 영업 중인 가게가 있으면 명의변경(가게는 계속) → 폐업 리드 아님."""
+    rows = c.execute("""SELECT permit_ymd FROM shops WHERE mgt_no<>? AND biz_type=? AND status LIKE '%영업%'
+                        AND ((road_addr<>'' AND road_addr=?) OR (addr<>'' AND addr=?))""",
+                     (mgt_no, biz, road or "", addr or "")).fetchall()
+    cd = datetime.strptime(close_ymd, "%Y%m%d").date()
+    for (permit,) in rows:
+        try:
+            if abs((datetime.strptime(permit, "%Y%m%d").date() - cd).days) <= TRANSFER_DAYS:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     rows = c.execute("""SELECT kind, addr, road_addr, name, biz_type, permit_ymd, tel FROM shops
                         WHERE permit_ymd>=? AND status LIKE '%영업%' ORDER BY kind, permit_ymd DESC""", (since_ymd,)).fetchall()
-    rows = [r for r in rows if any(x in (r[1] or "") + (r[2] or "") for x in cust["regions"])
-            and "한시적" not in (r[3] or "")]                 # 행사장 임시 부스 제외
+    rows = [r for r in rows if in_cust_region(cust, r[1], r[2]) and "한시적" not in (r[3] or "")]   # 행사장 임시 부스 제외
     if cust.get("types"):
         rows = [r for r in rows if r[4] in cust["types"]]
     head = f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 신규 개업 음식점] {', '.join(cust['regions'])} 총 {len(rows)}건\n"
-    out, cur = [], ""
+    out = []
     for kind in ("신규", "명의변경 추정"):
         part = [r for r in rows if (r[0] or "신규") == kind]
-        if not part:
-            continue
-        cur = f"\n■ {kind} {len(part)}건\n"
-        for _, addr, road, name, biz, permit, tel in part:
-            toks = (addr or "").split()
-            dong = toks[2] if len(toks) > 2 else ""
-            full = road or addr or ""
-            bldg = full.split(",")[0]                       # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
-            name_link = ("https://alsgudrl132.github.io/openlead/phone.html?"
-                         + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg}))
-            addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
-            cur += (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {permit[4:6]}/{permit[6:]}'
-                    f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {tel}" if tel else "") + "\n")
-        out.append(cur)
+        if part:
+            out.append(f"\n■ {kind} {len(part)}건\n" + "".join(fmt_line(*r[1:]) for r in part))
+
+    # 폐업 신고: 전체 스캔(backfill)이 상태를 갱신한 것 중 최근 폐업일. 명의변경은 제외.
+    closed = c.execute("""SELECT mgt_no, addr, road_addr, name, biz_type, close_ymd, tel FROM shops
+                          WHERE close_ymd>=? AND status LIKE '%폐업%' ORDER BY close_ymd DESC""", (since_ymd,)).fetchall()
+    closed = [r for r in closed if in_cust_region(cust, r[1], r[2]) and "한시적" not in (r[3] or "")
+              and not is_transfer_close(c, r[0], r[1], r[2], r[4], r[5])]
+    if cust.get("types"):
+        closed = [r for r in closed if r[4] in cust["types"]]
+    if closed:
+        out.append(f"\n■ 폐업 신고 {len(closed)}건 (영업하던 가게라 전화번호 조회 잘 됨)\n" + "".join(fmt_line(*r[1:]) for r in closed))
     return head + "".join(out) if out else head + "(해당 없음)"
 
 
