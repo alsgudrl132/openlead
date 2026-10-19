@@ -44,9 +44,9 @@
   var want = (params.get('a') || '').trim();            // 인허가 데이터의 도로명주소(건물까지)
   var closed = params.get('t') === 'c';                  // 폐업 신고 가게인지 (문구 분기)
   var knownTel = (params.get('tel') || '').trim();        // 인허가 자료에 있는 전화번호
+  if (want && !knownTel) document.getElementById('hint').textContent = '찾는 주소: ' + want;
   if (knownTel) document.getElementById('hint').innerHTML = (want ? '찾는 주소: ' + esc(want) + '<br>' : '')
     + '<b>신고 자료 전화번호: <a href="tel:' + esc(knownTel) + '">' + esc(knownTel) + '</a></b> (아래는 지도 등록 정보)';
-  if (want) document.getElementById('hint').textContent = '찾는 주소: ' + want;
   function norm(s) { return String(s || '').replace(/^(서울특별시|서울|부산광역시|부산|경기도|경기)\s*/, '').replace(/\s+/g, ' ').trim(); }
   function sameAddr(p) {
     if (!want) return null;
