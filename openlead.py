@@ -197,7 +197,8 @@ def cmd_backfill() -> None:
 def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     rows = c.execute("""SELECT kind, addr, road_addr, name, biz_type, permit_ymd, tel FROM shops
                         WHERE permit_ymd>=? AND status LIKE '%영업%' ORDER BY kind, permit_ymd DESC""", (since_ymd,)).fetchall()
-    rows = [r for r in rows if any(x in (r[1] or "") + (r[2] or "") for x in cust["regions"])]
+    rows = [r for r in rows if any(x in (r[1] or "") + (r[2] or "") for x in cust["regions"])
+            and "한시적" not in (r[3] or "")]                 # 행사장 임시 부스 제외
     if cust.get("types"):
         rows = [r for r in rows if r[4] in cust["types"]]
     head = f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 신규 개업 음식점] {', '.join(cust['regions'])} 총 {len(rows)}건\n"
