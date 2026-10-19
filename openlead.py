@@ -206,12 +206,21 @@ def cmd_backfill() -> None:
     state = os.path.join(os.path.dirname(DB_PATH) or ".", "backfill.txt")
     page = int(open(state).read() or 1) if os.path.exists(state) else 1
     c = db()
-    kept = 0
+    kept = fails = 0
     for _ in range(budget):
         try:
             p = fetch_page("info", page, 100)
-        except Exception as e:  # noqa: BLE001  트래픽 한도·네트워크 → 진행 위치 저장하고 정상 종료 (캐시 보존)
+            fails = 0
+        except RuntimeError as e:                        # 트래픽 한도 등 API 거절 → 오늘은 여기까지
             print(f"backfill stopped at page {page}: {e}"); break
+        except Exception as e:  # noqa: BLE001  타임아웃·네트워크 → 쉬었다가 같은 페이지 재시도, 연속 6번 실패면 종료
+            fails += 1
+            print(f"backfill page {page} failed ({fails}): {e}")
+            if fails >= 6:
+                break
+            c.commit(); open(state, "w").write(str(page))
+            time.sleep(60 * fails)
+            continue
         if not p["items"]:
             print("backfill cycle done at page", page); page = 1; break   # 한 바퀴 끝 → 처음부터 (폐업 갱신용 주기 스캔)
         kept += upsert(c, [i for i in p["items"] if in_region(i, regions)], date.today().isoformat())
