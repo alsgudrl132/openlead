@@ -508,8 +508,8 @@ def cmd_signups() -> None:
             continue
         who = (m.get("from") or {})
         label = who.get("username") and "@" + who["username"] or who.get("first_name") or chat
-        regions = parse_regions(text)
         parts = [p.strip() for p in text.split("|")]
+        regions = parse_regions(parts[2]) if len(parts) >= 3 else parse_regions(text)   # 구역 칸만 읽어 '도시락집' 오인 방지
         if chat == OWNER:
             if parts[0] == "추가":
                 if len(parts) < 3 or not regions:
