@@ -56,17 +56,22 @@
 
   function naver(s) { return 'https://map.naver.com/p/search/' + encodeURIComponent(s); }
 
-  function nearby(query) {                               // 상호로 못 찾으면: 주소 → 좌표 → 반경 50m 음식점
+  function none(query) {
+    out.innerHTML = '';
+    msg.innerHTML = '<b>확인된 전화번호가 없습니다.</b> ' + (closed ? '폐업 뒤 지도에서 내려간 것으로 보입니다. ' : '아직 지도에 등록되지 않았습니다. ')
+      + '주소로 찾아가거나 건너뛰세요. <a href="' + naver(want || query) + '" target="_blank">네이버 지도에서 주소 보기</a>';
+  }
+  function nearby(query) {                               // 상호로 못 찾으면: 주소 → 좌표 → 같은 건물 음식점
     if (!want) { render([], query); return; }
     new kakao.maps.services.Geocoder().addressSearch(want, function (res, st) {
-      if (st !== kakao.maps.services.Status.OK || !res.length) { render([], query); return; }
+      if (st !== kakao.maps.services.Status.OK || !res.length) { none(query); return; }
       var loc = new kakao.maps.LatLng(res[0].y, res[0].x);
       new kakao.maps.services.Places().categorySearch('FD6', function (data, st2) {
-        var ok = st2 === kakao.maps.services.Status.OK ? data : [];
-        if (!ok.length) { render([], query); return; }
+        var ok = (st2 === kakao.maps.services.Status.OK ? data : []).filter(function (p) { return sameAddr(p) === true; });   // 같은 건물만
+        if (!ok.length) { none(query); return; }
         out.innerHTML = '';
-        msg.innerHTML = '상호로는 못 찾았습니다. <b>같은 건물·반경 50m 음식점</b>입니다. 법인명으로 신고된 가게는 지도에 다른 이름으로 올라 있을 수 있습니다.';
-        ok.forEach(function (p) { out.appendChild(item(p, sameAddr(p) === true ? '<span class="tag">같은 주소</span>' : '<span class="tag no">' + Math.round(p.distance) + 'm</span>', false)); });
+        msg.innerHTML = '상호로는 못 찾았습니다. <b>같은 주소에 등록된 음식점</b>입니다. 법인명으로 신고된 가게는 간판 이름이 다를 수 있으니 확인 후 쓰세요.';
+        ok.forEach(function (p) { out.appendChild(item(p, '<span class="tag">같은 주소</span>', false)); });
       }, { location: loc, radius: 50, sort: kakao.maps.services.SortBy.DISTANCE, size: 15 });
     });
   }
@@ -81,7 +86,7 @@
   }
   function render(items, query) {
     out.innerHTML = '';
-    if (!items.length) {
+    if (!items.length && !want) {
       msg.innerHTML = (closed
         ? '카카오맵에서 찾지 못했습니다. 폐업 뒤 지도에서 내려갔거나 다른 이름으로 등록돼 있을 수 있습니다. '
         : '카카오맵에 아직 등록되지 않은 가게입니다. 개업 2~3주 뒤 다시 조회해 보세요. ')
@@ -89,10 +94,10 @@
         + (want ? ' · <a href="' + naver(want) + '" target="_blank">주소로 보기</a>' : '');
       return;
     }
-    items = items.map(function (p) { p._ok = sameAddr(p); return p; })
-                 .sort(function (a, b) { return (b._ok === true) - (a._ok === true); });
-    var hits = items.filter(function (p) { return p._ok === true; }).length;
-    msg.textContent = want ? (hits ? '주소 일치 ' + hits + '건' : '주소가 일치하는 결과가 없습니다. 아래는 상호가 비슷한 가게입니다.') : items.length + '건';
+    items = items.map(function (p) { p._ok = sameAddr(p); return p; });
+    if (want) items = items.filter(function (p) { return p._ok === true; });   // 주소가 맞는 것만. 비슷한 상호는 보여주지 않는다
+    if (!items.length) { none(query); return; }
+    msg.textContent = want ? '주소 일치 ' + items.length + '건' : items.length + '건';
     items.forEach(function (p) {
       var tag = p._ok === true ? '<span class="tag">주소 일치</span>' : (p._ok === false ? '<span class="tag no">유사 상호</span>' : '');
       out.appendChild(item(p, tag, p._ok === false));
