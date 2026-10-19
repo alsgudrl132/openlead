@@ -119,15 +119,15 @@ def classify(c: sqlite3.Connection, mgt_no: str) -> str:
         return "신규"
     road, addr, biz, permit = s
     permit_d = datetime.strptime(permit, "%Y%m%d").date()
-    prev = c.execute("""SELECT close_ymd FROM shops WHERE mgt_no<>? AND biz_type=? AND close_ymd<>'' AND close_ymd IS NOT NULL
+    prev = c.execute("""SELECT close_ymd FROM shops WHERE mgt_no<>? AND close_ymd<>'' AND close_ymd IS NOT NULL
                         AND ((road_addr<>'' AND road_addr=?) OR (addr<>'' AND addr=?))""",
-                     (mgt_no, biz, road or "", addr or "")).fetchall()
+                     (mgt_no, road or "", addr or "")).fetchall()
     for (close,) in prev:
         try:
             gap = (permit_d - datetime.strptime(close, "%Y%m%d").date()).days
         except ValueError:
             continue
-        if -30 <= gap <= TRANSFER_DAYS:      # 폐업 직후(또는 서류상 약간 역순)에 같은 자리 같은 업태
+        if -90 <= gap <= TRANSFER_DAYS:      # 옛 가게 폐업이 새 신고 뒤 90일까지 늦게 올 수 있음
             return "명의변경 추정"
     return "신규"
 
@@ -326,13 +326,14 @@ def in_cust_region(cust: dict, addr, road) -> bool:
 
 def is_transfer_close(c: sqlite3.Connection, mgt_no: str, addr, road, biz, close_ymd: str) -> bool:
     """폐업했지만 같은 자리·같은 업태로 영업 중인 가게가 있으면 명의변경(가게는 계속) → 폐업 리드 아님."""
-    rows = c.execute("""SELECT permit_ymd FROM shops WHERE mgt_no<>? AND biz_type=? AND status LIKE '%영업%'
+    rows = c.execute("""SELECT permit_ymd FROM shops WHERE mgt_no<>? AND status LIKE '%영업%'
                         AND ((road_addr<>'' AND road_addr=?) OR (addr<>'' AND addr=?))""",
-                     (mgt_no, biz, road or "", addr or "")).fetchall()
+                     (mgt_no, road or "", addr or "")).fetchall()          # 업태 무관: 업종 변경·법인 전환도 가게는 계속
     cd = datetime.strptime(close_ymd, "%Y%m%d").date()
     for (permit,) in rows:
         try:
-            if abs((datetime.strptime(permit, "%Y%m%d").date() - cd).days) <= TRANSFER_DAYS:
+            gap = (datetime.strptime(permit, "%Y%m%d").date() - cd).days
+            if -90 <= gap <= TRANSFER_DAYS:              # 새 사장 신고가 폐업 신고보다 먼저 오는 게 보통 (실측 최대 43일 전)
                 return True
         except ValueError:
             continue
@@ -523,6 +524,9 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp949 콘솔 대비
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill, "signups": cmd_signups, "filesync": cmd_filesync,
+     "send-seoul-test": lambda: email(os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), "[테스트] 서울 전체",
+                                       "<div style='font:15px/1.6 sans-serif;white-space:pre-wrap'>" + build_message(db(), {"name": "t", "regions": ["서울특별시"]},
+                                       (date.today() - timedelta(days=WEEK_DAYS)).strftime("%Y%m%d")) + "</div>"),
      "test-email": lambda: email(os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), "[오픈리드] 이메일 발송 테스트",
                                  "<p>이 메일이 보이면 Gmail 발송 설정이 끝난 겁니다. 매주 월요일 08:00 리스트가 이 형식으로 갑니다.</p>"),
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()
