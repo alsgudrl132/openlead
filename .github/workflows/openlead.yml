@@ -58,6 +58,7 @@ jobs:
           mkdir -p data
           case "${{ steps.j.outputs.job }}" in
             send-dry) python openlead.py send --dry ;;
+            stats)    CUSTOMERS_JSON='[{"name":"seoul","chat_id":"0","regions":["서울특별시"]}]' python openlead.py send --dry | grep -E "^\[|^■" ;;
             collect)  python openlead.py filesync ;;   # 서울 25개 구 인허가 파일 다운로드 → 신규·폐업 갱신 (API 불필요)
             *)        python openlead.py ${{ steps.j.outputs.job }} ;;
           esac
