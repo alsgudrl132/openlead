@@ -353,11 +353,16 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     if cust.get("types"):
         closed = [r for r in closed if r[4] in cust["types"]]
 
+    with_tel = [r for r in closed if (r[6] or "").strip()]
+    no_tel = [r for r in closed if not (r[6] or "").strip()]
     head = (f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 음식점 신고 현황] {', '.join(cust['regions'])}"
-            f" · 폐업 {len(closed)}건 · 신규 {len(rows)}건\n")
+            f" · 폐업 {len(closed)}건 (번호 {len(with_tel)}건) · 신규 {len(rows)}건\n")
     out = []
-    if closed:
-        out.append(f"\n■ 폐업 신고 {len(closed)}건 (상호를 누르면 전화번호)\n" + "".join(fmt_line(*r[1:], closed=True) for r in closed))
+    if with_tel:
+        out.append(f"\n■ 폐업 · 전화번호 있음 {len(with_tel)}건\n" + "".join(fmt_line(*r[1:], closed=True) for r in with_tel))
+    if no_tel:
+        out.append(f"\n■ 폐업 · 주소만 {len(no_tel)}건 (방문·매물용, 상호를 누르면 지도 등록 여부 확인)\n"
+                   + "".join(fmt_line(*r[1:], closed=True) for r in no_tel))
     for kind in ("신규", "명의변경 추정"):
         part = [r for r in rows if (r[0] or "신규") == kind]
         if part:

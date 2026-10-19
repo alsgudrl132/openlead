@@ -46,8 +46,8 @@ def test_flow():
     assert kinds == {"A-new": "명의변경 추정", "B-new": "신규"}
 
     msg = ol.build_message(c, {"name": "t", "chat_id": "0", "regions": ["강남구"]}, "20261015")
-    assert "폐업 1건 · 신규 1건" in msg and "새집" in msg and "카페B" not in msg
-    assert "폐업 신고 1건" in msg and "문닫은집" in msg and "옛집" not in msg   # 옛집은 명의변경이라 폐업 리드 아님
+    assert "폐업 1건 (번호 1건) · 신규 1건" in msg and "새집" in msg and "카페B" not in msg
+    assert "폐업 · 전화번호 있음 1건" in msg and "문닫은집" in msg and "옛집" not in msg   # 옛집은 명의변경이라 폐업 리드 아님
     msg2 = ol.build_message(c, {"name": "t", "chat_id": "0", "regions": regions, "types": ["커피숍"]}, "20261015")
     assert "카페B" in msg2 and "새집" not in msg2
 
