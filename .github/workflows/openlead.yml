@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: collect | send | send-dry | probe
+        description: collect | send | send-dry | probe | backfill
         default: collect
 
 permissions:

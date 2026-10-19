@@ -4,6 +4,7 @@
   python openlead.py probe            # API 파라미터·정렬·변경분 규모 확인 (키 필요)
   python openlead.py collect          # 매일: 수집 → SQLite → 분류
   python openlead.py send [--dry]     # 매주: 고객별 리스트 텔레그램 발송
+  python openlead.py backfill         # 1회성: 과거 이력 백필 (BACKFILL_PAGES 로 하루 예산 조절)
 
 환경변수:
   DATA_GO_KR_KEY   공공데이터포털 인증키 (Decoding 키)
@@ -163,12 +164,34 @@ def cmd_collect() -> None:
         seen += len(p["items"])
         hit = [i for i in p["items"] if in_region(i, regions)]
         kept += upsert(c, hit, today)
-        mods = [ymd(i.get("LAST_MDFCN_PNT")) for i in p["items"]]
-        if mods and max(mods) < cutoff:                 # 최신순이면 여기서 끊긴다
+        permits = [ymd(i.get("LCPMT_YMD")) for i in p["items"]]
+        if permits and max(permits) < cutoff:           # API 는 인허가일 내림차순 (2026-10-19 probe 확인)
             break
     reclassify(c, cutoff)
     c.commit()
     print(f"seen={seen} kept={kept} pages<={page}")
+
+
+def cmd_backfill() -> None:
+    """과거 이력(폐업 포함)을 구역만 골라 저장. 전체 2.3M건/100 ≈ 23,000페이지, 개발계정 10,000회/일 → 3일.
+    OPENLEAD_COLLECT.regions 사용, 진행 위치는 data/backfill.txt 에 저장(캐시)."""
+    cfg = json.loads(os.environ.get("OPENLEAD_COLLECT", "{}"))
+    regions: list[str] = cfg.get("regions") or ["서울특별시"]
+    budget = int(os.environ.get("BACKFILL_PAGES", "9000"))
+    state = os.path.join(os.path.dirname(DB_PATH) or ".", "backfill.txt")
+    page = int(open(state).read() or 1) if os.path.exists(state) else 1
+    c = db()
+    kept = 0
+    for _ in range(budget):
+        p = fetch_page("info", page, 100)
+        if not p["items"]:
+            print("backfill done at page", page); break
+        kept += upsert(c, [i for i in p["items"] if in_region(i, regions)], date.today().isoformat())
+        page += 1
+        if page % 200 == 0:
+            c.commit(); open(state, "w").write(str(page))
+    c.commit(); open(state, "w").write(str(page))
+    print(f"backfill next_page={page} kept={kept}")
 
 
 def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
@@ -213,5 +236,5 @@ def cmd_send(dry: bool) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp949 콘솔 대비
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    {"probe": cmd_probe, "collect": cmd_collect,
+    {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill,
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()
