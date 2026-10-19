@@ -53,6 +53,7 @@ jobs:
           CUSTOMERS_JSON: ${{ secrets.CUSTOMERS_JSON }}
           OPENLEAD_COLLECT: ${{ secrets.OPENLEAD_COLLECT }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
           BACKFILL_PAGES: ${{ github.event.inputs.pages || '9000' }}
         run: |
           mkdir -p data

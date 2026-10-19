@@ -340,6 +340,49 @@ def is_transfer_close(c: sqlite3.Connection, mgt_no: str, addr, road, biz, close
     return False
 
 
+_KAKAO_CACHE: dict = {}   # 한 번의 발송 안에서만 재사용 (프로세스 메모리, 디스크 저장 없음)
+
+
+def _norm_name(s: str) -> str:
+    import re
+    s = re.sub(r"\([^)]*\)", "", s or "")
+    s = re.sub(r"^(주식회사|유한회사|㈜)", "", s)
+    return re.sub(r"[\s\-·.,'\"]+", "", s).lower()
+
+
+def kakao_fill(r):
+    """(mgt_no, addr, road, name, biz, ymd, tel). tel 이 비어 있고 KAKAO_REST_KEY 가 있으면
+    카카오 키워드 검색에서 상호(정규화 후 완전 동일) + 도로명 건물 주소가 모두 일치하는 결과의 번호만 채운다."""
+    import re
+    key = os.environ.get("KAKAO_REST_KEY", "").strip()
+    mgt_no, addr, road, name, biz, d, tel = r
+    if tel or not key or not name:
+        return r
+    if mgt_no in _KAKAO_CACHE:
+        return r[:6] + (_KAKAO_CACHE[mgt_no],)
+    bldg = re.sub(r"\s*\([^)]*$", "", (road or "").split(",")[0]).strip()
+    target = _norm_name(name)
+    found = ""
+    toks = (addr or "").split()
+    dong = toks[2] if len(toks) > 2 else ""
+    for q in (f"{name} {dong}".strip(), name):
+        try:
+            url = "https://dapi.kakao.com/v2/local/search/keyword.json?" + urllib.parse.urlencode({"query": q, "size": 15})
+            req = urllib.request.Request(url, headers={"Authorization": f"KakaoAK {key}"})
+            docs = json.load(urllib.request.urlopen(req, timeout=20)).get("documents", [])
+        except Exception:  # noqa: BLE001
+            break
+        for p in docs:
+            ra = (p.get("road_address_name") or "").replace("서울 ", "서울특별시 ")
+            if _norm_name(p.get("place_name")) == target and bldg and (ra.startswith(bldg) or bldg.startswith(ra) and ra):
+                found = p.get("phone") or ""
+                break
+        if found or docs:
+            break
+    _KAKAO_CACHE[mgt_no] = found
+    return r[:6] + (found,)
+
+
 def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     rows = c.execute("""SELECT kind, addr, road_addr, name, biz_type, permit_ymd, tel FROM shops
                         WHERE permit_ymd>=? AND status LIKE '%영업%' ORDER BY kind, permit_ymd DESC""", (since_ymd,)).fetchall()
@@ -368,6 +411,7 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
             body += fmt_line(*r[1:], closed=closed) if closed else fmt_line(*r[1:])
         return f"\n■ {title} {len(part)}건\n" + body
 
+    closed = [kakao_fill(r) for r in closed]             # 번호 없는 행: 상호·주소가 정확히 일치할 때만 지도 번호 보충 (저장 안 함)
     with_tel = [r for r in closed if (r[6] or "").strip()]
     no_tel = [r for r in closed if not (r[6] or "").strip()]
     want_new = bool(cust.get("new"))                     # 신규 개업은 고객이 원할 때만 (기본 꺼짐)
