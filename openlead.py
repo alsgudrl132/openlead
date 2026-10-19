@@ -214,7 +214,7 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
             dong = toks[2] if len(toks) > 2 else ""
             full = road or addr or ""
             bldg = full.split(",")[0]                       # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
-            name_link = "https://map.naver.com/p/search/" + urllib.parse.quote(f"{name} {dong}".strip())
+            name_link = "https://alsgudrl132.github.io/openlead/phone.html?q=" + urllib.parse.quote(f"{name} {dong}".strip())
             addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
             cur += (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {permit[4:6]}/{permit[6:]}'
                     f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {tel}" if tel else "") + "\n")
