@@ -209,7 +209,11 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
             continue
         cur = f"\n■ {kind} {len(part)}건\n"
         for _, addr, road, name, biz, permit, tel in part:
-            cur += f"- {name} | {biz} | {permit[4:6]}/{permit[6:]} | {road or addr}" + (f" | {tel}" if tel else "") + "\n"
+            toks = (addr or "").split()
+            dong = toks[2] if len(toks) > 2 else ""
+            link = "https://map.naver.com/p/search/" + urllib.parse.quote(f"{name} {dong}".strip())
+            cur += (f"- {name} | {biz} | {permit[4:6]}/{permit[6:]} | {road or addr}"
+                    + (f" | {tel}" if tel else "") + f"\n  {link}\n")
         out.append(cur)
     return head + "".join(out) if out else head + "(해당 없음)"
 
