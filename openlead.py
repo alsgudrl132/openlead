@@ -293,8 +293,62 @@ def telegram(chat_id: str, text: str) -> None:
         urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=30).read()
 
 
+OWNER = os.environ.get("OWNER_CHAT_ID", "8724562427")
+TRIAL_DAYS = 14
+SIGNUPS = os.path.join(os.path.dirname(DB_PATH) or ".", "signups.jsonl")
+
+
+def tg_api(method: str, **params) -> dict:
+    url = f"https://api.telegram.org/bot{os.environ['TELEGRAM_TOKEN']}/{method}"
+    data = urllib.parse.urlencode(params).encode()
+    return json.load(urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=30))
+
+
+def cmd_signups() -> None:
+    """봇에 온 메시지를 읽어 '신청 | 업체 | 구역' 이면 체험 명단에 넣고, 전부 운영자에게 전달한다. 서버 없이 폴링."""
+    import re
+    off_path = os.path.join(os.path.dirname(DB_PATH) or ".", "tg_offset.txt")
+    offset = int(open(off_path).read() or 0) if os.path.exists(off_path) else 0
+    res = tg_api("getUpdates", offset=offset, timeout=0)
+    n = 0
+    for u in res.get("result", []):
+        offset = u["update_id"] + 1
+        m = u.get("message") or {}
+        chat = str((m.get("chat") or {}).get("id") or "")
+        text = (m.get("text") or "").strip()
+        if not chat or chat == OWNER or not text or text == "/start":
+            continue
+        who = (m.get("from") or {})
+        label = who.get("username") and "@" + who["username"] or who.get("first_name") or chat
+        regions = re.findall(r"[가-힣]+구", text)
+        if text.startswith("신청") and regions:
+            with open(SIGNUPS, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"chat_id": chat, "name": label, "regions": regions, "text": text,
+                                    "ts": date.today().isoformat()}, ensure_ascii=False) + "\n")
+            tg_api("sendMessage", chat_id=chat, text=f"접수됐습니다. {', '.join(regions)} 리스트가 다음 월요일 08:00에 옵니다. 2주 무료입니다.")
+            tg_api("sendMessage", chat_id=OWNER, text=f"[신청] {label} ({chat})\n{text}")
+            n += 1
+        else:
+            tg_api("sendMessage", chat_id=OWNER, text=f"[문의] {label} ({chat})\n{text}")
+    os.makedirs(os.path.dirname(off_path) or ".", exist_ok=True)
+    open(off_path, "w").write(str(offset))
+    print(f"signups new={n} offset={offset}")
+
+
+def trial_customers() -> list[dict]:
+    """체험 기간(TRIAL_DAYS) 안인 신청자. 기간이 지나면 CUSTOMERS_JSON 에 옮겨야 계속 받는다."""
+    if not os.path.exists(SIGNUPS):
+        return []
+    out = []
+    for ln in open(SIGNUPS, encoding="utf-8"):
+        s = json.loads(ln)
+        if (date.today() - date.fromisoformat(s["ts"])).days <= TRIAL_DAYS:
+            out.append({"name": s["name"] + " (체험)", "chat_id": s["chat_id"], "regions": s["regions"], "types": []})
+    return out
+
+
 def cmd_send(dry: bool) -> None:
-    customers = json.loads(os.environ.get("CUSTOMERS_JSON", "[]"))
+    customers = json.loads(os.environ.get("CUSTOMERS_JSON", "[]")) + trial_customers()
     since = (date.today() - timedelta(days=WEEK_DAYS)).strftime("%Y%m%d")
     c = db()
     for cust in customers:
@@ -309,5 +363,5 @@ def cmd_send(dry: bool) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp949 콘솔 대비
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill,
+    {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill, "signups": cmd_signups,
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()

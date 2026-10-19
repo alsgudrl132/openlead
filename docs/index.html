@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오픈리드 — 매주 월요일, 새로 연 가게와 닫은 가게</title>
+<meta name="description" content="구청 영업신고 데이터로 만든 신규 개업·폐업 식당 리스트를 매주 월요일 텔레그램으로 보냅니다. 서울 구 단위, 월 49,000원, 첫 2주 무료.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;900&family=Noto+Sans+KR:wght@400;700&display=swap">
+<style>
+  :root{--ink:#111;--paper:#fff;--mute:#555;--rule:#ddd;--hi:#ffe600}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink)}
+  body{font-family:"Noto Sans KR",system-ui,sans-serif;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 60px}
+  .wrap{max-width:860px;margin:0 auto}
+  h1,h2,h3,p{margin:0}
+  h1,h2,h3{text-wrap:balance}
+  .kicker{font:500 14px/1 "Gothic A1";letter-spacing:.12em;border:2px solid var(--ink);display:inline-block;padding:6px 10px}
+  h1{font:900 clamp(34px,7vw,66px)/1.08 "Gothic A1";letter-spacing:-.02em;margin-top:22px}
+  mark{background:linear-gradient(transparent 55%,var(--hi) 55%);color:inherit}
+  .lead{font-size:18px;line-height:1.6;margin-top:22px;max-width:36em}
+  .cta{display:inline-block;margin-top:26px;background:var(--ink);color:#fff;font:900 18px "Gothic A1";padding:16px 26px;text-decoration:none}
+  .cta small{display:block;font:400 13px "Noto Sans KR";opacity:.8;margin-top:4px}
+  .cta:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--hi);outline-offset:2px}
+  .rowhead{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--ink);padding-bottom:8px;margin-top:56px;flex-wrap:wrap;gap:8px}
+  .rowhead h2{font:900 22px "Gothic A1"}
+  .rowhead span{font-size:13px}
+  .rows{list-style:none;padding:0;margin:0}
+  .rows li{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:12px 0;border-bottom:1px solid var(--rule);font-size:15px}
+  .rows b{font-weight:700}
+  .rows .d{font-variant-numeric:tabular-nums;color:var(--mute)}
+  .rows .addr{grid-column:1/-1;color:var(--mute);font-size:14px}
+  .tag{font:900 11px "Gothic A1";padding:3px 6px;background:var(--ink);color:#fff;margin-left:6px;vertical-align:middle}
+  .tag.c{background:var(--hi);color:var(--ink)}
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:56px}
+  .steps h3{font:900 18px "Gothic A1"}
+  .steps p{margin-top:8px;line-height:1.6;color:#333;font-size:15px}
+  .price{margin-top:56px;border:3px solid var(--ink);padding:24px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
+  .price .n{font:900 44px/1 "Gothic A1";letter-spacing:-.03em}
+  .price .n small{font:500 16px "Noto Sans KR";letter-spacing:0}
+  .price ul{margin:10px 0 0;padding-left:18px;line-height:1.7;font-size:15px}
+  form{margin-top:56px;max-width:460px;display:grid;gap:10px}
+  form h2{font:900 22px "Gothic A1"}
+  label{display:grid;gap:4px;font-size:13px}
+  input{font:inherit;padding:10px;border:1px solid #999;border-radius:3px;background:#fff;color:#111;min-width:0}
+  button{font:900 16px "Gothic A1";background:var(--hi);border:2px solid var(--ink);padding:14px;cursor:pointer;color:var(--ink)}
+  .after{display:none;border:2px solid var(--ink);padding:16px;gap:10px}
+  .after.on{display:grid}
+  .after p{font-size:15px}
+  .after textarea{font:inherit;font-size:14px;width:100%;min-height:92px;padding:8px;border:1px solid #999}
+  .after .go{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;font:900 16px "Gothic A1";padding:12px 16px;text-align:center}
+  .after .row{display:flex;gap:8px;flex-wrap:wrap}
+  .after .copy{font:700 14px "Noto Sans KR";background:#fff;padding:10px 12px}
+  .foot{margin-top:60px;font-size:12px;color:#666;line-height:1.7}
+  .foot a{color:inherit}
+  @media (max-width:560px){.price{grid-template-columns:1fr}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="kicker">매주 월요일 08:00 · 텔레그램</span>
+  <h1>지난주 강남·서초에<br>새로 연 식당 <mark>49곳</mark>.<br>아직 아무도 안 갔습니다.</h1>
+  <p class="lead">구청에 영업신고가 들어온 가게를 매주 월요일 아침 리스트로 받습니다. 네이버에 뜨기 전, 간판 달기 전입니다. 주방기기·식자재·간판·POS 영업이라면 남들보다 2주 먼저 문을 두드립니다. 폐업 신고분은 따로 묶어 드립니다.</p>
+  <a class="cta" href="#signup">첫 2주 무료로 받기<small>카드 등록 없음 · 텔레그램만 있으면 됩니다</small></a>
+
+  <div class="rowhead"><h2>10/12 ~ 10/18 강남구·서초구 샘플</h2><span>실제 발송분에서 발췌</span></div>
+  <ul class="rows">
+    <li><div><b>옥된장 강남역지점</b><span class="tag">신규</span></div><span class="d">10/16</span><span class="addr">강남구 강남대로84길 15, 지하1층 123호 (역삼동) · 한식</span></li>
+    <li><div><b>나를위한식사 샤브한끼</b><span class="tag">신규</span></div><span class="d">10/16</span><span class="addr">강남구 도곡로7길 19, 지하1층 102호 (역삼동) · 한식</span></li>
+    <li><div><b>버티샌드위치하우스 도산</b><span class="tag">신규</span></div><span class="d">10/15</span><span class="addr">강남구 압구정로46길 28, 지상1층 (신사동) · 경양식</span></li>
+    <li><div><b>세꼬시닷컴</b><span class="tag">신규</span></div><span class="d">10/14</span><span class="addr">강남구 학동로6길 9, 지상1층 (논현동) · 횟집</span></li>
+    <li><div><b>결마루</b><span class="tag">신규</span></div><span class="d">10/14</span><span class="addr">서초구 방배중앙로 8, 지하1층 (방배동) · 한식</span></li>
+    <li><div><b>마레 테이블</b><span class="tag">신규</span></div><span class="d">10/12</span><span class="addr">서초구 신반포로47길 77, 두원빌딩 1층 104호 (잠원동) · 경양식</span></li>
+    <li><div><b>폐업 신고분</b><span class="tag c">폐업</span></div><span class="d">별도 묶음</span><span class="addr">영업하던 가게라 전화번호가 바로 조회됩니다. 중고 주방기기 매입·상가 중개용.</span></li>
+  </ul>
+
+  <div class="steps">
+    <div><h3>1. 월요일 아침에 옵니다</h3><p>텔레그램 한 통. 구 단위로 묶어서, 신규 개업과 폐업 신고를 나눠 보냅니다. 앱 설치도 로그인도 없습니다.</p></div>
+    <div><h3>2. 상호를 누르면 전화번호</h3><p>지도에 등록된 가게는 번호가 바로 뜹니다. 아직 없으면 주소로 건물 위치를 봅니다. 주소는 항상 있습니다.</p></div>
+    <div><h3>3. 명의변경은 걸러서</h3><p>사장만 바뀐 가게는 "명의변경 추정"으로 따로 표시합니다. 헛걸음을 줄이는 게 이 리스트의 일입니다.</p></div>
+  </div>
+
+  <div class="price">
+    <div>
+      <div class="n">49,000<small>원 / 월</small></div>
+      <ul>
+        <li>구 2~3개 + 업종 1개(음식점) 기준. 구 추가는 월 20,000원</li>
+        <li>첫 2주 무료. 그 뒤 계좌이체, 세금계산서 발행</li>
+        <li>언제든 다음 달부터 해지</li>
+      </ul>
+    </div>
+    <a class="cta" href="#signup">2주 무료 신청</a>
+  </div>
+
+  <form id="signup">
+    <h2>사전 신청</h2>
+    <label>업체명 / 하시는 일<input id="biz" required placeholder="예: ○○주방 (중고 주방기기 매입)"></label>
+    <label>받고 싶은 구역 (서울, 구 단위)<input id="region" required placeholder="예: 강남구, 서초구"></label>
+    <button type="submit">무료로 받아보기</button>
+    <div class="after" id="after">
+      <p><b>마지막 한 단계.</b> 아래 내용이 텔레그램 봇으로 전달되면 접수됩니다. 버튼을 누르면 봇 대화방이 열리니 붙여넣어 보내주세요.</p>
+      <textarea id="msg" readonly></textarea>
+      <div class="row">
+        <button type="button" class="copy" id="copy">내용 복사</button>
+        <a class="go" id="go" href="https://t.me/openlead_alert_bot" target="_blank" rel="noopener">텔레그램 봇 열기</a>
+      </div>
+      <p style="font-size:13px;color:#555">다음 월요일 08:00에 첫 리스트가 갑니다. 2주 뒤 계속 받을지 여쭤봅니다.</p>
+    </div>
+  </form>
+
+  <p class="foot">데이터 출처: 행정안전부 지방행정 인허가 정보(공공데이터포털, 이용허락범위 제한 없음). 인허가 기준이며 실제 개업·영업 여부와 다를 수 있습니다. 데이터는 2일 전 기준으로 갱신됩니다. 전화번호 조회는 <a href="phone.html">카카오 지도 실시간 검색</a>을 이용하며 저장하지 않습니다. 알림 누락·지연에 대한 책임은 지지 않습니다.</p>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('signup'),after=document.getElementById('after'),msg=document.getElementById('msg');
+  f.addEventListener('submit',function(e){
+    e.preventDefault();
+    var biz=document.getElementById('biz').value.trim(),region=document.getElementById('region').value.trim();
+    msg.value='신청 | '+biz+' | '+region;
+    after.classList.add('on'); msg.focus(); msg.select();
+  });
+  document.getElementById('copy').addEventListener('click',function(){
+    var b=this; msg.select();
+    (navigator.clipboard?navigator.clipboard.writeText(msg.value):Promise.reject()).then(function(){b.textContent='복사됨'},function(){try{document.execCommand('copy');b.textContent='복사됨'}catch(e){b.textContent='길게 눌러 복사'}});
+  });
+})();
+</script>
+</body>
+</html>

@@ -3,10 +3,11 @@ on:
   schedule:
     - cron: "0 21 * * *"   # 매일 06:00 KST 수집 + 전체 스캔
     - cron: "0 23 * * 0"   # 매주 월 08:00 KST 발송
+    - cron: "30 * * * *"   # 매시 30분: 봇에 온 신청 메시지 수거
   workflow_dispatch:
     inputs:
       job:
-        description: collect | send | send-dry | probe | backfill
+        description: collect | send | send-dry | probe | backfill | signups
         default: collect
       pages:
         description: backfill 페이지 예산 (기본 9000)
@@ -38,7 +39,11 @@ jobs:
         run: |
           j="${{ github.event.inputs.job }}"
           if [ -z "$j" ]; then
-            if [ "${{ github.event.schedule }}" = "0 23 * * 0" ]; then j=send; else j=collect; fi
+            case "${{ github.event.schedule }}" in
+              "0 23 * * 0") j=send ;;
+              "30 * * * *") j=signups ;;
+              *)            j=collect ;;
+            esac
           fi
           echo "job=$j" >> "$GITHUB_OUTPUT"
       - name: run
