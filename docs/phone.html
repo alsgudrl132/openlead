@@ -58,7 +58,8 @@
 
   function none(query) {
     out.innerHTML = '';
-    msg.innerHTML = '<b>확인된 전화번호가 없습니다.</b> ' + (closed ? '폐업 뒤 지도에서 내려간 것으로 보입니다. ' : '아직 지도에 등록되지 않았습니다. ')
+    if (knownTel) { msg.innerHTML = '지도에는 등록 정보가 없습니다. 위의 신고 자료 번호를 쓰세요. <a href="' + naver(want || query) + '" target="_blank">네이버 지도에서 주소 보기</a>'; return; }
+    msg.innerHTML = '<b>확인된 전화번호가 없습니다.</b> '+ (closed ? '폐업 뒤 지도에서 내려간 것으로 보입니다. ' : '아직 지도에 등록되지 않았습니다. ')
       + '주소로 찾아가거나 건너뛰세요. <a href="' + naver(want || query) + '" target="_blank">네이버 지도에서 주소 보기</a>';
   }
   function item(p, tag, dim) {
