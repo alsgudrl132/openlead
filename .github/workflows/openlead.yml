@@ -59,8 +59,7 @@ jobs:
           mkdir -p data
           case "${{ steps.j.outputs.job }}" in
             send-dry) python openlead.py send --dry ;;
-            nettest)  for u in https://file.localdata.go.kr/file/general_restaurants/info https://www.data.go.kr/ https://apis.data.go.kr/ https://www.localdata.go.kr/; do curl -s -o /dev/null -m 25 -w "$u %{http_code} %{time_connect}s
-" "$u" || echo "$u FAIL"; done ;;
+            nettest)  for u in https://file.localdata.go.kr/file/general_restaurants/info https://www.data.go.kr/ https://apis.data.go.kr/ https://www.localdata.go.kr/; do curl -s -o /dev/null -m 25 -w "$u %{http_code} %{time_connect}s" "$u" || printf "%s FAIL" "$u"; echo; done ;;
             stats)    CUSTOMERS_JSON='[{"name":"seoul","chat_id":"0","regions":["서울특별시"]}]' python openlead.py send --dry | grep -E "^\[|^■" ;;
             collect)  python openlead.py filesync && python openlead.py notices ;;   # 파일 동기화 → 체험 종료/월초 알림
             *)        python openlead.py ${{ steps.j.outputs.job }} ;;
