@@ -719,7 +719,9 @@ def deliver(cust: dict, msg: str) -> str:
     tagged = f"{first} · {cust.get('name','')} 전용" + msg[len(first):]
     if cust.get("email"):
         email(cust["email"], f"{first} · {cust.get('name','')} 전용",
-              "<div style='font:15px/1.6 sans-serif;white-space:pre-wrap'>" + tagged + "</div>")
+              "<div style='font:15px/1.6 sans-serif;white-space:pre-wrap'>" + tagged + "</div>"
+              "<p style='font:12px/1.6 sans-serif;color:#666;margin-top:24px'>오픈리드 · 구청 폐업 신고 기준이며 실제 영업 상태와 다를 수 있습니다 · "
+              "<a href='https://alsgudrl132.github.io/openlead/terms.html'>이용약관·환불 규정</a> · 그만 받으시려면 이 메일에 답장</p>")
         return "emailed"
     telegram(cust["chat_id"], tagged)
     return "sent"
