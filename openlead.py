@@ -38,7 +38,10 @@ CREATE INDEX IF NOT EXISTS ix_permit ON shops(permit_ymd);
 
 # ---------- API ----------
 def fetch_page(op: str, page: int, rows: int = 100, **extra) -> dict:
-    q = {"serviceKey": os.environ["DATA_GO_KR_KEY"], "type": "json",
+    key = os.environ["DATA_GO_KR_KEY"].strip()
+    if "%" in key:                                   # Encoding 키를 넣어도 동작하게
+        key = urllib.parse.unquote(key)
+    q = {"serviceKey": key, "type": "json",
          "pageNo": page, "numOfRows": rows, **extra}
     url = f"{API}/{op}?" + urllib.parse.urlencode(q)
     with urllib.request.urlopen(url, timeout=60) as r:
