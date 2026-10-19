@@ -898,7 +898,7 @@ def cmd_notices() -> None:
         left = TRIAL_DAYS - (today - date.fromisoformat(s["ts"])).days
         if left == 2:
             msg = (f"{s['name']}님, 오픈리드 무료 체험이 이틀 뒤 끝납니다. 계속 받으시려면 이 메시지에 답장 주세요. "
-                   f"이후 월 30,000원(계좌이체, 세금계산서 발행)입니다. 답이 없으면 자동으로 중단됩니다.")
+                   f"이후 월 30,000원(계좌이체)입니다. 답이 없으면 자동으로 중단됩니다.")
             try:
                 if s.get("email"):
                     email(s["email"], "[오픈리드] 무료 체험이 이틀 뒤 끝납니다", f"<p>{msg}</p>")
