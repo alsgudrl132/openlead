@@ -477,15 +477,27 @@ def file_session():
     cj = http.cookiejar.CookieJar()
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
     op.addheaders = [("User-Agent", "Mozilla/5.0"), ("Referer", FILE_HOST + "/file/general_restaurants/info")]
-    op.open(FILE_HOST + "/file/general_restaurants/info", timeout=60).read()
-    op.open(FILE_HOST + "/file/validate/download-count", timeout=60).read()
+    fetch_retry(op, FILE_HOST + "/file/general_restaurants/info", 60)
+    fetch_retry(op, FILE_HOST + "/file/validate/download-count", 60)
     return op
+
+
+def fetch_retry(op, url: str, timeout: int, tries: int = 4) -> bytes:
+    """file.localdata.go.kr 가 가끔 응답을 안 준다 → 쉬었다가 재시도 (2026-10-19 첫 접속 타임아웃 사례)."""
+    for i in range(tries):
+        try:
+            return op.open(url, timeout=timeout).read()
+        except Exception:  # noqa: BLE001
+            if i == tries - 1:
+                raise
+            time.sleep(30 * (i + 1))
+    return b""
 
 
 def file_rows(op, org_code: str):
     """구 하나의 CSV(cp949)를 받아 API 필드명으로 바꾼 dict 를 낸다."""
     import csv, io
-    raw = op.open(f"{FILE_HOST}/file/download/general_restaurants/info?orgCode={org_code}", timeout=600).read()
+    raw = fetch_retry(op, f"{FILE_HOST}/file/download/general_restaurants/info?orgCode={org_code}", 600)
     rd = csv.reader(io.StringIO(raw.decode("cp949", errors="replace")))
     hdr = next(rd)
     H = {h: i for i, h in enumerate(hdr)}
