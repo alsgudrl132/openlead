@@ -1,16 +1,23 @@
 name: openlead
 on:
   schedule:
-    - cron: "0 21 * * *"   # 매일 06:00 KST 수집
+    - cron: "0 21 * * *"   # 매일 06:00 KST 수집 + 전체 스캔
     - cron: "0 23 * * 0"   # 매주 월 08:00 KST 발송
   workflow_dispatch:
     inputs:
       job:
         description: collect | send | send-dry | probe | backfill
         default: collect
+      pages:
+        description: backfill 페이지 예산 (기본 9000)
+        default: "9000"
 
 permissions:
   contents: read
+
+concurrency:
+  group: openlead-db      # DB 캐시를 동시에 두 작업이 건드리지 않게
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -21,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: restore db   # ponytail: 캐시가 비면 빈 DB로 시작 (주간 리스트는 하루 수집이면 복구됨)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: data
           key: openlead-db-${{ github.run_id }}
@@ -40,9 +47,17 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CUSTOMERS_JSON: ${{ secrets.CUSTOMERS_JSON }}
           OPENLEAD_COLLECT: ${{ secrets.OPENLEAD_COLLECT }}
+          BACKFILL_PAGES: ${{ github.event.inputs.pages || '9000' }}
         run: |
+          mkdir -p data
           case "${{ steps.j.outputs.job }}" in
             send-dry) python openlead.py send --dry ;;
             collect)  python openlead.py collect && python openlead.py backfill ;;   # 전체 스캔 3일 주기 → 폐업 갱신
             *)        python openlead.py ${{ steps.j.outputs.job }} ;;
           esac
+      - name: save db      # 실패해도 진행분 보존
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: openlead-db-${{ github.run_id }}
