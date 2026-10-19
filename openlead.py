@@ -259,22 +259,23 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     rows = [r for r in rows if in_cust_region(cust, r[1], r[2]) and not is_noise(r[3], r[2] or r[1])]
     if cust.get("types"):
         rows = [r for r in rows if r[4] in cust["types"]]
-    head = f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 신규 개업 음식점] {', '.join(cust['regions'])} 총 {len(rows)}건\n"
-    out = []
-    for kind in ("신규", "명의변경 추정"):
-        part = [r for r in rows if (r[0] or "신규") == kind]
-        if part:
-            out.append(f"\n■ {kind} {len(part)}건\n" + "".join(fmt_line(*r[1:]) for r in part))
-
-    # 폐업 신고: 전체 스캔(backfill)이 상태를 갱신한 것 중 최근 폐업일. 명의변경은 제외.
+    # 폐업 신고(메인): 전체 스캔(backfill)이 상태를 갱신한 것 중 최근 폐업일. 명의변경은 제외.
     closed = c.execute("""SELECT mgt_no, addr, road_addr, name, biz_type, close_ymd, tel FROM shops
                           WHERE close_ymd>=? AND status LIKE '%폐업%' ORDER BY close_ymd DESC""", (since_ymd,)).fetchall()
     closed = [r for r in closed if in_cust_region(cust, r[1], r[2]) and not is_noise(r[3], r[2] or r[1])
               and not is_transfer_close(c, r[0], r[1], r[2], r[4], r[5])]
     if cust.get("types"):
         closed = [r for r in closed if r[4] in cust["types"]]
+
+    head = (f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 음식점 신고 현황] {', '.join(cust['regions'])}"
+            f" · 폐업 {len(closed)}건 · 신규 {len(rows)}건\n")
+    out = []
     if closed:
-        out.append(f"\n■ 폐업 신고 {len(closed)}건 (영업하던 가게라 전화번호 조회 잘 됨)\n" + "".join(fmt_line(*r[1:]) for r in closed))
+        out.append(f"\n■ 폐업 신고 {len(closed)}건 (상호를 누르면 전화번호)\n" + "".join(fmt_line(*r[1:]) for r in closed))
+    for kind in ("신규", "명의변경 추정"):
+        part = [r for r in rows if (r[0] or "신규") == kind]
+        if part:
+            out.append(f"\n■ 신규 개업 · {kind} {len(part)}건\n" + "".join(fmt_line(*r[1:]) for r in part))
     return head + "".join(out) if out else head + "(해당 없음)"
 
 
