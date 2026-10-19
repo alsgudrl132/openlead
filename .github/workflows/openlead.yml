@@ -1,0 +1,47 @@
+name: openlead
+on:
+  schedule:
+    - cron: "0 21 * * *"   # 매일 06:00 KST 수집
+    - cron: "0 23 * * 0"   # 매주 월 08:00 KST 발송
+  workflow_dispatch:
+    inputs:
+      job:
+        description: collect | send | send-dry | probe
+        default: collect
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: restore db   # ponytail: 캐시가 비면 빈 DB로 시작 (주간 리스트는 하루 수집이면 복구됨)
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: openlead-db-${{ github.run_id }}
+          restore-keys: openlead-db-
+      - name: decide job
+        id: j
+        run: |
+          j="${{ github.event.inputs.job }}"
+          if [ -z "$j" ]; then
+            if [ "${{ github.event.schedule }}" = "0 23 * * 0" ]; then j=send; else j=collect; fi
+          fi
+          echo "job=$j" >> "$GITHUB_OUTPUT"
+      - name: run
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CUSTOMERS_JSON: ${{ secrets.CUSTOMERS_JSON }}
+          OPENLEAD_COLLECT: ${{ secrets.OPENLEAD_COLLECT }}
+        run: |
+          case "${{ steps.j.outputs.job }}" in
+            send-dry) python openlead.py send --dry ;;
+            *)        python openlead.py ${{ steps.j.outputs.job }} ;;
+          esac
