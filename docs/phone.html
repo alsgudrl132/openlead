@@ -18,6 +18,10 @@
   .tel a{color:#0a58ca;text-decoration:none}
   .muted{color:#888;font-size:14px}
   .src{margin-top:24px;font-size:12px;color:#999}
+  .hint{font-size:13px;color:#666;margin:8px 0 0}
+  li.dim{opacity:.5}
+  .tag{font-size:12px;padding:2px 6px;border-radius:4px;background:#e6f4ea;color:#1e7e34;margin-left:6px}
+  .tag.no{background:#f3f3f3;color:#888}
 </style>
 </head>
 <body>
@@ -26,6 +30,7 @@
   <input id="q" placeholder="상호 + 동 (예: 옥된장 역삼동)" autofocus>
   <button>검색</button>
 </form>
+<p id="hint" class="hint"></p>
 <p id="msg" class="muted"></p>
 <ul id="out"></ul>
 <p class="src">검색 결과 제공: 카카오 (실시간 조회, 저장하지 않음)</p>
@@ -36,6 +41,14 @@
   var q = document.getElementById('q'), out = document.getElementById('out'), msg = document.getElementById('msg');
   var params = new URLSearchParams(location.search);
   if (params.get('q')) q.value = params.get('q');
+  var want = (params.get('a') || '').trim();            // 인허가 데이터의 도로명주소(건물까지)
+  if (want) document.getElementById('hint').textContent = '찾는 주소: ' + want;
+  function norm(s) { return String(s || '').replace(/^(서울특별시|서울|부산광역시|부산|경기도|경기)\s*/, '').replace(/\s+/g, ' ').trim(); }
+  function sameAddr(p) {
+    if (!want) return null;
+    var w = norm(want), r = norm(p.road_address_name);
+    return r && (r.indexOf(w) === 0 || w.indexOf(r) === 0);
+  }
 
   function naver(s) { return 'https://map.naver.com/p/search/' + encodeURIComponent(s); }
 
@@ -46,10 +59,15 @@
         + '<a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>';
       return;
     }
-    msg.textContent = items.length + '건';
+    items = items.map(function (p) { p._ok = sameAddr(p); return p; })
+                 .sort(function (a, b) { return (b._ok === true) - (a._ok === true); });
+    var hits = items.filter(function (p) { return p._ok === true; }).length;
+    msg.textContent = want ? (hits ? '주소 일치 ' + hits + '건' : '주소가 일치하는 결과가 없습니다. 아래는 상호가 비슷한 가게입니다.') : items.length + '건';
     items.forEach(function (p) {
       var li = document.createElement('li');
-      li.innerHTML = '<div class="name">' + esc(p.place_name) + ' <span class="muted">' + esc((p.category_name || '').split('>').pop().trim()) + '</span></div>'
+      if (p._ok === false) li.className = 'dim';
+      var tag = p._ok === true ? '<span class="tag">주소 일치</span>' : (p._ok === false ? '<span class="tag no">유사 상호</span>' : '');
+      li.innerHTML = '<div class="name">' + esc(p.place_name) + tag + ' <span class="muted">' + esc((p.category_name || '').split('>').pop().trim()) + '</span></div>'
         + '<div class="addr">' + esc(p.road_address_name || p.address_name) + '</div>'
         + '<div class="tel">' + (p.phone ? '<a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a>' : '<span class="muted">전화번호 미등록</span>') + '</div>'
         + '<div class="muted"><a href="' + esc(p.place_url) + '" target="_blank">카카오맵</a> · <a href="' + naver(p.place_name) + '" target="_blank">네이버 지도</a></div>';
