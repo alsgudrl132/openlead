@@ -740,6 +740,7 @@ def owner_command(text: str, c: sqlite3.Connection) -> None:
     if parts[0] == "추가":
         if len(parts) < 3 or not regions:
             tg_api("sendMessage", chat_id=OWNER, text="형식: 추가 | 이메일(또는 chat_id) | 구역 | 업체명 [| 유료]\n구역 예: 서울 / 강남구, 서초구 / 수원시 / 경기")
+            return
         name = parts[3] if len(parts) > 3 else parts[1]
         paid = any(x.strip() == "유료" for x in parts[3:])      # 끝에 '유료' 없으면 2주 체험
         if name == "유료":
