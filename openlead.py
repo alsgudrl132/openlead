@@ -306,13 +306,13 @@ def fmt_tel(t: str) -> str:
     return t or ""
 
 
-def fmt_line(addr, road, name, biz, d, tel) -> str:
+def fmt_line(addr, road, name, biz, d, tel, closed: bool = False) -> str:
     toks = (addr or "").split()
     dong = toks[2] if len(toks) > 2 else ""
     full = road or addr or ""
     bldg = full.split(",")[0]                           # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
     name_link = ("https://alsgudrl132.github.io/openlead/phone.html?"
-                 + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg}))
+                 + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg, **({"t": "c"} if closed else {})}))
     addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
     return (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {d[4:6]}/{d[6:]}'
             f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {fmt_tel(tel)}" if tel else "") + "\n")
@@ -355,7 +355,7 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
             f" · 폐업 {len(closed)}건 · 신규 {len(rows)}건\n")
     out = []
     if closed:
-        out.append(f"\n■ 폐업 신고 {len(closed)}건 (상호를 누르면 전화번호)\n" + "".join(fmt_line(*r[1:]) for r in closed))
+        out.append(f"\n■ 폐업 신고 {len(closed)}건 (상호를 누르면 전화번호)\n" + "".join(fmt_line(*r[1:], closed=True) for r in closed))
     for kind in ("신규", "명의변경 추정"):
         part = [r for r in rows if (r[0] or "신규") == kind]
         if part:

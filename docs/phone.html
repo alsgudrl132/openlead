@@ -42,6 +42,7 @@
   var params = new URLSearchParams(location.search);
   if (params.get('q')) q.value = params.get('q');
   var want = (params.get('a') || '').trim();            // 인허가 데이터의 도로명주소(건물까지)
+  var closed = params.get('t') === 'c';                  // 폐업 신고 가게인지 (문구 분기)
   if (want) document.getElementById('hint').textContent = '찾는 주소: ' + want;
   function norm(s) { return String(s || '').replace(/^(서울특별시|서울|부산광역시|부산|경기도|경기)\s*/, '').replace(/\s+/g, ' ').trim(); }
   function sameAddr(p) {
@@ -55,8 +56,11 @@
   function render(items, query) {
     out.innerHTML = '';
     if (!items.length) {
-      msg.innerHTML = '카카오맵에 아직 등록되지 않은 가게입니다. 개업 2~3주 뒤 다시 조회해 보세요. '
-        + '<a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>';
+      msg.innerHTML = (closed
+        ? '카카오맵에서 찾지 못했습니다. 폐업 뒤 지도에서 내려갔거나 다른 이름으로 등록돼 있을 수 있습니다. '
+        : '카카오맵에 아직 등록되지 않은 가게입니다. 개업 2~3주 뒤 다시 조회해 보세요. ')
+        + '<a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>'
+        + (want ? ' · <a href="' + naver(want) + '" target="_blank">주소로 보기</a>' : '');
       return;
     }
     items = items.map(function (p) { p._ok = sameAddr(p); return p; })
@@ -76,15 +80,35 @@
   }
   function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+  // 긴 상호는 카카오가 못 찾는다 → 단계적으로 줄여가며 재시도
+  function variants(query) {
+    var parts = query.split(/\s+/), dong = '', name = query;
+    if (parts.length > 1 && /(동|가|읍|면)$/.test(parts[parts.length - 1])) { dong = parts.pop(); name = parts.join(' '); }
+    var core = name.replace(/\([^)]*\)/g, ' ')                               // 괄호 제거
+                   .replace(/\s*(강남|서초|서울|본점|\S*점|\S*호점)$/u, '')      // 지점 표기 제거
+                   .replace(/\s+/g, ' ').trim();
+    var first2 = core.split(' ').slice(0, 2).join(' ');
+    var list = [query, core + (dong ? ' ' + dong : ''), core, first2 + (dong ? ' ' + dong : ''), first2, name];
+    return list.filter(function (v, i, a) { return v && v.trim() && a.indexOf(v) === i; });
+  }
   function search() {
     var query = q.value.trim();
     if (!query) return;
     msg.textContent = '검색 중…';
     if (!window.kakao || !kakao.maps) { msg.innerHTML = '검색 서비스를 불러오지 못했습니다. <a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>'; return; }
     kakao.maps.load(function () {
-      new kakao.maps.services.Places().keywordSearch(query, function (data, status) {
-        render(status === kakao.maps.services.Status.OK ? data : [], query);
-      }, { size: 10 });
+      var ps = new kakao.maps.services.Places(), tries = variants(query), i = 0;
+      (function next() {
+        if (i >= tries.length) { render([], query); return; }
+        var qv = tries[i++];
+        ps.keywordSearch(qv, function (data, status) {
+          var ok = status === kakao.maps.services.Status.OK ? data : [];
+          if (want) { var hit = ok.filter(function (p) { return sameAddr(p); }); if (hit.length) { render(ok, qv); return; } }
+          else if (ok.length) { render(ok, qv); return; }
+          if (i >= tries.length) { render(ok, qv); return; }   // 마지막엔 주소 불일치라도 보여준다
+          next();
+        }, { size: 10 });
+      })();
     });
   }
   document.getElementById('f').addEventListener('submit', function (e) { e.preventDefault(); search(); });
