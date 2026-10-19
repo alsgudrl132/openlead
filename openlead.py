@@ -19,6 +19,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -46,8 +47,15 @@ def fetch_page(op: str, page: int, rows: int = 100, **extra) -> dict:
     q = {"serviceKey": key, "type": "json",
          "pageNo": page, "numOfRows": rows, **extra}
     url = f"{API}/{op}?" + urllib.parse.urlencode(q)
-    with urllib.request.urlopen(url, timeout=60) as r:
-        body = json.loads(r.read().decode("utf-8"))
+    for attempt in range(4):                          # 타임아웃·일시 오류 재시도 (2026-10-19 백필이 타임아웃 1회로 죽음)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                body = json.loads(r.read().decode("utf-8"))
+            break
+        except (TimeoutError, OSError, ValueError) as e:
+            if attempt == 3:
+                raise
+            time.sleep(3 * (attempt + 1))
     if "OpenAPI_ServiceResponse" in body:          # 키·트래픽 오류는 다른 봉투로 옴
         raise RuntimeError(body["OpenAPI_ServiceResponse"]["cmmMsgHeader"])
     resp = body["response"]
@@ -184,7 +192,10 @@ def cmd_backfill() -> None:
     c = db()
     kept = 0
     for _ in range(budget):
-        p = fetch_page("info", page, 100)
+        try:
+            p = fetch_page("info", page, 100)
+        except Exception as e:  # noqa: BLE001  트래픽 한도·네트워크 → 진행 위치 저장하고 정상 종료 (캐시 보존)
+            print(f"backfill stopped at page {page}: {e}"); break
         if not p["items"]:
             print("backfill cycle done at page", page); page = 1; break   # 한 바퀴 끝 → 처음부터 (폐업 갱신용 주기 스캔)
         kept += upsert(c, [i for i in p["items"] if in_region(i, regions)], date.today().isoformat())
