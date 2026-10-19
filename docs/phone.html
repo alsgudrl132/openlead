@@ -43,6 +43,9 @@
   if (params.get('q')) q.value = params.get('q');
   var want = (params.get('a') || '').trim();            // 인허가 데이터의 도로명주소(건물까지)
   var closed = params.get('t') === 'c';                  // 폐업 신고 가게인지 (문구 분기)
+  var knownTel = (params.get('tel') || '').trim();        // 인허가 자료에 있는 전화번호
+  if (knownTel) document.getElementById('hint').innerHTML = (want ? '찾는 주소: ' + esc(want) + '<br>' : '')
+    + '<b>신고 자료 전화번호: <a href="tel:' + esc(knownTel) + '">' + esc(knownTel) + '</a></b> (아래는 지도 등록 정보)';
   if (want) document.getElementById('hint').textContent = '찾는 주소: ' + want;
   function norm(s) { return String(s || '').replace(/^(서울특별시|서울|부산광역시|부산|경기도|경기)\s*/, '').replace(/\s+/g, ' ').trim(); }
   function sameAddr(p) {
@@ -53,6 +56,29 @@
 
   function naver(s) { return 'https://map.naver.com/p/search/' + encodeURIComponent(s); }
 
+  function nearby(query) {                               // 상호로 못 찾으면: 주소 → 좌표 → 반경 50m 음식점
+    if (!want) { render([], query); return; }
+    new kakao.maps.services.Geocoder().addressSearch(want, function (res, st) {
+      if (st !== kakao.maps.services.Status.OK || !res.length) { render([], query); return; }
+      var loc = new kakao.maps.LatLng(res[0].y, res[0].x);
+      new kakao.maps.services.Places().categorySearch('FD6', function (data, st2) {
+        var ok = st2 === kakao.maps.services.Status.OK ? data : [];
+        if (!ok.length) { render([], query); return; }
+        out.innerHTML = '';
+        msg.innerHTML = '상호로는 못 찾았습니다. <b>같은 건물·반경 50m 음식점</b>입니다. 법인명으로 신고된 가게는 지도에 다른 이름으로 올라 있을 수 있습니다.';
+        ok.forEach(function (p) { out.appendChild(item(p, sameAddr(p) === true ? '<span class="tag">같은 주소</span>' : '<span class="tag no">' + Math.round(p.distance) + 'm</span>', false)); });
+      }, { location: loc, radius: 50, sort: kakao.maps.services.SortBy.DISTANCE, size: 15 });
+    });
+  }
+  function item(p, tag, dim) {
+    var li = document.createElement('li');
+    if (dim) li.className = 'dim';
+    li.innerHTML = '<div class="name">' + esc(p.place_name) + tag + ' <span class="muted">' + esc((p.category_name || '').split('>').pop().trim()) + '</span></div>'
+      + '<div class="addr">' + esc(p.road_address_name || p.address_name) + '</div>'
+      + '<div class="tel">' + (p.phone ? '<a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a>' : '<span class="muted">전화번호 미등록</span>') + '</div>'
+      + '<div class="muted"><a href="' + esc(p.place_url) + '" target="_blank">카카오맵</a> · <a href="' + naver(p.place_name) + '" target="_blank">네이버 지도</a></div>';
+    return li;
+  }
   function render(items, query) {
     out.innerHTML = '';
     if (!items.length) {
@@ -68,14 +94,8 @@
     var hits = items.filter(function (p) { return p._ok === true; }).length;
     msg.textContent = want ? (hits ? '주소 일치 ' + hits + '건' : '주소가 일치하는 결과가 없습니다. 아래는 상호가 비슷한 가게입니다.') : items.length + '건';
     items.forEach(function (p) {
-      var li = document.createElement('li');
-      if (p._ok === false) li.className = 'dim';
       var tag = p._ok === true ? '<span class="tag">주소 일치</span>' : (p._ok === false ? '<span class="tag no">유사 상호</span>' : '');
-      li.innerHTML = '<div class="name">' + esc(p.place_name) + tag + ' <span class="muted">' + esc((p.category_name || '').split('>').pop().trim()) + '</span></div>'
-        + '<div class="addr">' + esc(p.road_address_name || p.address_name) + '</div>'
-        + '<div class="tel">' + (p.phone ? '<a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a>' : '<span class="muted">전화번호 미등록</span>') + '</div>'
-        + '<div class="muted"><a href="' + esc(p.place_url) + '" target="_blank">카카오맵</a> · <a href="' + naver(p.place_name) + '" target="_blank">네이버 지도</a></div>';
-      out.appendChild(li);
+      out.appendChild(item(p, tag, p._ok === false));
     });
   }
   function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -84,7 +104,7 @@
   function variants(query) {
     var parts = query.split(/\s+/), dong = '', name = query;
     if (parts.length > 1 && /(동|가|읍|면)$/.test(parts[parts.length - 1])) { dong = parts.pop(); name = parts.join(' '); }
-    var core = name.replace(/\([^)]*\)/g, ' ')                               // 괄호 제거
+    var core = name.replace(/\([^)]*\)/g, ' ').replace(/^(주식회사|유한회사|㈜)\s*/, '')   // 괄호·법인 표기 제거
                    .replace(/\s*(강남|서초|서울|본점|\S*점|\S*호점)$/u, '')      // 지점 표기 제거
                    .replace(/\s+/g, ' ').trim();
     var first2 = core.split(' ').slice(0, 2).join(' ');
@@ -99,13 +119,13 @@
     kakao.maps.load(function () {
       var ps = new kakao.maps.services.Places(), tries = variants(query), i = 0;
       (function next() {
-        if (i >= tries.length) { render([], query); return; }
+        if (i >= tries.length) { nearby(query); return; }
         var qv = tries[i++];
         ps.keywordSearch(qv, function (data, status) {
           var ok = status === kakao.maps.services.Status.OK ? data : [];
           if (want) { var hit = ok.filter(function (p) { return sameAddr(p); }); if (hit.length) { render(ok, qv); return; } }
           else if (ok.length) { render(ok, qv); return; }
-          if (i >= tries.length) { render(ok, qv); return; }   // 마지막엔 주소 불일치라도 보여준다
+          if (i >= tries.length) { if (want) nearby(query); else render(ok, qv); return; }   // 마지막: 주소 기반 탐색
           next();
         }, { size: 10 });
       })();

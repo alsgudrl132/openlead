@@ -312,7 +312,8 @@ def fmt_line(addr, road, name, biz, d, tel, closed: bool = False) -> str:
     full = road or addr or ""
     bldg = full.split(",")[0]                           # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
     name_link = ("https://alsgudrl132.github.io/openlead/phone.html?"
-                 + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg, **({"t": "c"} if closed else {})}))
+                 + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg, **({"t": "c"} if closed else {}),
+                                           **({"tel": fmt_tel(tel)} if tel else {})}))
     addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
     return (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {d[4:6]}/{d[6:]}'
             f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {fmt_tel(tel)}" if tel else "") + "\n")
