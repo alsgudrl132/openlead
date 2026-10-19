@@ -310,7 +310,8 @@ def fmt_line(addr, road, name, biz, d, tel, closed: bool = False) -> str:
     toks = (addr or "").split()
     dong = toks[2] if len(toks) > 2 else ""
     full = road or addr or ""
-    bldg = full.split(",")[0]                           # 상세주소 떼고 건물까지만 → 지도에서 항상 잡힘
+    import re
+    bldg = re.sub(r"\s*\([^)]*$", "", full.split(",")[0]).strip()   # 상세주소·잘린 괄호 떼고 건물까지만
     name_link = ("https://alsgudrl132.github.io/openlead/phone.html?"
                  + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg, **({"t": "c"} if closed else {}),
                                            **({"tel": fmt_tel(tel)} if tel else {})}))
