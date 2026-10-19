@@ -2,7 +2,8 @@
 
 사용:
   python openlead.py probe            # API 파라미터·정렬·변경분 규모 확인 (키 필요)
-  python openlead.py collect          # 매일: 수집 → SQLite → 분류
+  python openlead.py filesync         # 매일: 구별 인허가 파일 다운로드 → SQLite → 분류 (API 불필요)
+  python openlead.py collect          # (예비) API 로 신규 신고분만 수집
   python openlead.py send [--dry]     # 매주: 고객별 리스트 텔레그램 발송
   python openlead.py backfill         # 1회성: 과거 이력 백필 (BACKFILL_PAGES 로 하루 예산 조절)
 
@@ -232,6 +233,79 @@ def cmd_backfill() -> None:
     print(f"backfill next_page={page} kept={kept}")
 
 
+
+# ---------- 파일 동기화 (API 대신: 인허가 파일을 구 단위로 매일 통째로 받는다) ----------
+FILE_HOST = "https://file.localdata.go.kr"
+SEOUL_ORG = {  # 개방자치단체코드 → 구 (file.localdata.go.kr 지역 선택 목록, 2026-10-19)
+    "3000000": "종로구", "3010000": "중구", "3020000": "용산구", "3030000": "성동구", "3040000": "광진구",
+    "3050000": "동대문구", "3060000": "중랑구", "3070000": "성북구", "3080000": "강북구", "3090000": "도봉구",
+    "3100000": "노원구", "3110000": "은평구", "3120000": "서대문구", "3130000": "마포구", "3140000": "양천구",
+    "3150000": "강서구", "3160000": "구로구", "3170000": "금천구", "3180000": "영등포구", "3190000": "동작구",
+    "3200000": "관악구", "3210000": "서초구", "3220000": "강남구", "3230000": "송파구", "3240000": "강동구",
+}
+KEEP_DAYS = 200   # 영업 중이거나, 최근 200일 내 인허가·폐업인 행만 저장 (명의변경 판정에 충분)
+
+
+def file_session():
+    """세션 쿠키가 있어야 다운로드가 된다. 안내 페이지 → 다운로드 횟수 검증 순서로 한 번 호출."""
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    op.addheaders = [("User-Agent", "Mozilla/5.0"), ("Referer", FILE_HOST + "/file/general_restaurants/info")]
+    op.open(FILE_HOST + "/file/general_restaurants/info", timeout=60).read()
+    op.open(FILE_HOST + "/file/validate/download-count", timeout=60).read()
+    return op
+
+
+def file_rows(op, org_code: str):
+    """구 하나의 CSV(cp949)를 받아 API 필드명으로 바꾼 dict 를 낸다."""
+    import csv, io
+    raw = op.open(f"{FILE_HOST}/file/download/general_restaurants/info?orgCode={org_code}", timeout=600).read()
+    rd = csv.reader(io.StringIO(raw.decode("cp949", errors="replace")))
+    hdr = next(rd)
+    H = {h: i for i, h in enumerate(hdr)}
+    g = lambda r, k: (r[H[k]] if k in H and H[k] < len(r) else "").strip()
+    for r in rd:
+        yield {"MNG_NO": g(r, "관리번호"), "BPLC_NM": g(r, "사업장명"), "BZSTAT_SE_NM": g(r, "업태구분명") or g(r, "위생업태명"),
+               "LOTNO_ADDR": g(r, "지번주소"), "ROAD_NM_ADDR": g(r, "도로명주소"), "TELNO": g(r, "전화번호"),
+               "LCPMT_YMD": g(r, "인허가일자"), "DTL_SALS_STTS_NM": g(r, "상세영업상태명") or g(r, "영업상태명"),
+               "CLSBIZ_YMD": g(r, "폐업일자"), "LAST_MDFCN_PNT": g(r, "최종수정시점")}
+
+
+def cmd_filesync() -> None:
+    """매일: 서울 25개 구 파일을 받아 영업 중 + 최근 200일 인허가/폐업 행을 DB에 반영. API 호출 0."""
+    cfg = collect_cfg()
+    orgs = cfg.get("org_codes") or list(SEOUL_ORG)
+    keep_from = (date.today() - timedelta(days=KEEP_DAYS)).strftime("%Y%m%d")
+    today = date.today().isoformat()
+    op = file_session()
+    c = db()
+    total = kept = 0
+    for code in orgs:
+        batch = []
+        for it in file_rows(op, code):
+            total += 1
+            if (it["DTL_SALS_STTS_NM"].startswith("영업") or ymd(it["CLSBIZ_YMD"]) >= keep_from
+                    or ymd(it["LCPMT_YMD"]) >= keep_from):
+                batch.append(it)
+        kept += upsert(c, batch, today)
+        c.commit()
+        print(f"{SEOUL_ORG.get(code, code)}: rows={total} kept_total={kept}")
+        time.sleep(2)
+    reclassify(c, (date.today() - timedelta(days=WEEK_DAYS + 3)).strftime("%Y%m%d"))
+    c.commit()
+    print(f"filesync done rows={total} kept={kept}")
+
+
+def fmt_tel(t: str) -> str:
+    d = "".join(ch for ch in (t or "") if ch.isdigit())
+    if len(d) in (9, 10, 11) and d.startswith("0"):
+        if d.startswith("02"):
+            return f"02-{d[2:-4]}-{d[-4:]}"
+        return f"{d[:3]}-{d[3:-4]}-{d[-4:]}"
+    return t or ""
+
+
 def fmt_line(addr, road, name, biz, d, tel) -> str:
     toks = (addr or "").split()
     dong = toks[2] if len(toks) > 2 else ""
@@ -241,7 +315,7 @@ def fmt_line(addr, road, name, biz, d, tel) -> str:
                  + urllib.parse.urlencode({"q": f"{name} {dong}".strip(), "a": bldg}))
     addr_link = "https://map.naver.com/p/search/" + urllib.parse.quote(bldg)
     return (f'- <a href="{name_link}">{html.escape(name or "")}</a> | {html.escape(biz or "")} | {d[4:6]}/{d[6:]}'
-            f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {tel}" if tel else "") + "\n")
+            f' | <a href="{addr_link}">{html.escape(full)}</a>' + (f" | {fmt_tel(tel)}" if tel else "") + "\n")
 
 
 def in_cust_region(cust: dict, addr, road) -> bool:
@@ -428,7 +502,7 @@ def cmd_send(dry: bool) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp949 콘솔 대비
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill, "signups": cmd_signups,
+    {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill, "signups": cmd_signups, "filesync": cmd_filesync,
      "test-email": lambda: email(os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), "[오픈리드] 이메일 발송 테스트",
                                  "<p>이 메일이 보이면 Gmail 발송 설정이 끝난 겁니다. 매주 월요일 08:00 리스트가 이 형식으로 갑니다.</p>"),
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()
