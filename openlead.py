@@ -752,10 +752,13 @@ def cmd_signups() -> None:
         if chat == OWNER:
             if parts[0] == "추가":
                 if len(parts) < 3 or not regions:
-                    tg_api("sendMessage", chat_id=OWNER, text="형식: 추가 | 이메일(또는 chat_id) | 구역 | 업체명\n구역 예: 서울 / 강남구, 서초구 / 수원시 / 경기")
+                    tg_api("sendMessage", chat_id=OWNER, text="형식: 추가 | 이메일(또는 chat_id) | 구역 | 업체명 [| 유료]\n구역 예: 서울 / 강남구, 서초구 / 수원시 / 경기")
                     continue
                 name = parts[3] if len(parts) > 3 else parts[1]
-                add_customer(parts[1], regions, name, paid=True)
+                paid = any(x.strip() == "유료" for x in parts[3:])      # 끝에 '유료' 없으면 2주 체험
+                if name == "유료":
+                    name = parts[1]
+                add_customer(parts[1], regions, name, paid=paid)
                 warn = "" if region_has_data(c, regions) else "\n주의: 이 구역은 아직 수집하지 않아 리스트가 비어 있습니다. 켜달라고 말씀해 주세요."
                 try:
                     send_now({"name": name, "regions": regions, "types": [],
@@ -764,7 +767,7 @@ def cmd_signups() -> None:
                     sent = "이번 주 리스트를 지금 보냈습니다."
                 except Exception as e:  # noqa: BLE001
                     sent = f"바로 보내기 실패: {e}"
-                tg_api("sendMessage", chat_id=OWNER, text=f"추가됨: {parts[1]} / {', '.join(regions)} / {name}\n{sent}{warn}")
+                tg_api("sendMessage", chat_id=OWNER, text=f"추가됨({'유료' if paid else '체험 2주'}): {parts[1]} / {', '.join(regions)} / {name}\n{sent}{warn}")
             elif parts[0] == "제거" and len(parts) >= 2:
                 remove_customer(parts[1])
                 tg_api("sendMessage", chat_id=OWNER, text=f"제거됨: {parts[1]}")
@@ -901,7 +904,7 @@ def cmd_notices() -> None:
                     telegram(s["chat_id"], msg)
             except Exception as e:  # noqa: BLE001
                 print("notice fail", s.get("name"), e)
-            tg_api("sendMessage", chat_id=OWNER, text=f"[체험 D-2] {s['name']} | {s.get('email') or s.get('chat_id')} | {', '.join(s['regions'])}\n계속 받겠다고 하면: 추가 | {s.get('email') or s.get('chat_id')} | {', '.join(s['regions'])} | {s['name']}")
+            tg_api("sendMessage", chat_id=OWNER, text=f"[체험 D-2] {s['name']} | {s.get('email') or s.get('chat_id')} | {', '.join(s['regions'])}\n계속 받겠다고 하면: 추가 | {s.get('email') or s.get('chat_id')} | {', '.join(s['regions'])} | {s['name']} | 유료")
     if today.day == 1:
         paid = [s for s in customers_all() if s.get("paid")]
         body = "\n".join(f"- {s['name']} | {s.get('email') or s.get('chat_id')} | {', '.join(s['regions'])}" for s in paid) or "(유료 고객 없음)"
