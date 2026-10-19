@@ -157,8 +157,24 @@ def cmd_probe() -> None:
               f" | seoul {sum(1 for i in it if in_region(i, ['서울특별시']))}")
 
 
+NOISE = ("백화점", "코엑스", "마트", "식품관", "푸드코트", "박람회", "축제", "행사", "한시적", "휴게소", "구내식당")
+
+
+def is_noise(name: str, addr: str) -> bool:
+    """방문 영업 리드가 못 되는 곳: 백화점·마트 입점, 행사장 부스, 구내식당 등."""
+    text = (name or "") + " " + (addr or "")
+    return any(k in text for k in NOISE)
+
+
+def collect_cfg() -> dict:
+    """구역 설정: 저장소의 collect.json 우선(비밀 아님), 없으면 OPENLEAD_COLLECT 환경변수."""
+    if os.path.exists("collect.json"):
+        return json.load(open("collect.json", encoding="utf-8"))
+    return json.loads(os.environ.get("OPENLEAD_COLLECT", "{}"))
+
+
 def cmd_collect() -> None:
-    cfg = json.loads(os.environ.get("OPENLEAD_COLLECT", "{}"))
+    cfg = collect_cfg()
     regions: list[str] = cfg.get("regions") or ["서울특별시"]
     max_pages: int = cfg.get("max_pages", 50)          # ponytail: 정렬 미확인 → 페이지 상한으로 트래픽 보호
     extra: dict = cfg.get("params", {})                # probe 로 찾은 변경분 필터를 여기 넣는다
@@ -184,7 +200,7 @@ def cmd_collect() -> None:
 def cmd_backfill() -> None:
     """과거 이력(폐업 포함)을 구역만 골라 저장. 전체 2.3M건/100 ≈ 23,000페이지, 개발계정 10,000회/일 → 3일.
     OPENLEAD_COLLECT.regions 사용, 진행 위치는 data/backfill.txt 에 저장(캐시)."""
-    cfg = json.loads(os.environ.get("OPENLEAD_COLLECT", "{}"))
+    cfg = collect_cfg()
     regions: list[str] = cfg.get("regions") or ["서울특별시"]
     budget = int(os.environ.get("BACKFILL_PAGES", "9000"))
     state = os.path.join(os.path.dirname(DB_PATH) or ".", "backfill.txt")
@@ -240,7 +256,7 @@ def is_transfer_close(c: sqlite3.Connection, mgt_no: str, addr, road, biz, close
 def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     rows = c.execute("""SELECT kind, addr, road_addr, name, biz_type, permit_ymd, tel FROM shops
                         WHERE permit_ymd>=? AND status LIKE '%영업%' ORDER BY kind, permit_ymd DESC""", (since_ymd,)).fetchall()
-    rows = [r for r in rows if in_cust_region(cust, r[1], r[2]) and "한시적" not in (r[3] or "")]   # 행사장 임시 부스 제외
+    rows = [r for r in rows if in_cust_region(cust, r[1], r[2]) and not is_noise(r[3], r[2] or r[1])]
     if cust.get("types"):
         rows = [r for r in rows if r[4] in cust["types"]]
     head = f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 신규 개업 음식점] {', '.join(cust['regions'])} 총 {len(rows)}건\n"
@@ -253,7 +269,7 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     # 폐업 신고: 전체 스캔(backfill)이 상태를 갱신한 것 중 최근 폐업일. 명의변경은 제외.
     closed = c.execute("""SELECT mgt_no, addr, road_addr, name, biz_type, close_ymd, tel FROM shops
                           WHERE close_ymd>=? AND status LIKE '%폐업%' ORDER BY close_ymd DESC""", (since_ymd,)).fetchall()
-    closed = [r for r in closed if in_cust_region(cust, r[1], r[2]) and "한시적" not in (r[3] or "")
+    closed = [r for r in closed if in_cust_region(cust, r[1], r[2]) and not is_noise(r[3], r[2] or r[1])
               and not is_transfer_close(c, r[0], r[1], r[2], r[4], r[5])]
     if cust.get("types"):
         closed = [r for r in closed if r[4] in cust["types"]]
