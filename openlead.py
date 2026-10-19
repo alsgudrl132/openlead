@@ -353,20 +353,33 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
     if cust.get("types"):
         closed = [r for r in closed if r[4] in cust["types"]]
 
+    def gu(r):                                           # "서울특별시 강남구 …" → 강남구 (구별 묶음용)
+        t = ((r[1] or r[2] or "") + " ").split()
+        return t[1] if len(t) > 1 else ""
+
+    def section(title, part, closed=False):
+        part = sorted(part, key=lambda r: (gu(r), r[5] or ""), reverse=False)
+        body, last = "", None
+        for r in part:
+            g = gu(r)
+            if g != last:
+                body += f"[{g}]\n"; last = g
+            body += fmt_line(*r[1:], closed=closed) if closed else fmt_line(*r[1:])
+        return f"\n■ {title} {len(part)}건\n" + body
+
     with_tel = [r for r in closed if (r[6] or "").strip()]
     no_tel = [r for r in closed if not (r[6] or "").strip()]
     head = (f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 음식점 신고 현황] {', '.join(cust['regions'])}"
             f" · 폐업 {len(closed)}건 (번호 {len(with_tel)}건) · 신규 {len(rows)}건\n")
     out = []
     if with_tel:
-        out.append(f"\n■ 폐업 · 전화번호 있음 {len(with_tel)}건\n" + "".join(fmt_line(*r[1:], closed=True) for r in with_tel))
+        out.append(section("폐업 · 전화번호 있음", with_tel, closed=True))
     if no_tel:
-        out.append(f"\n■ 폐업 · 주소만 {len(no_tel)}건 (방문·매물용, 상호를 누르면 지도 등록 여부 확인)\n"
-                   + "".join(fmt_line(*r[1:], closed=True) for r in no_tel))
+        out.append(section("폐업 · 주소만 (방문·매물용)", no_tel, closed=True))
     for kind in ("신규", "명의변경 추정"):
         part = [r for r in rows if (r[0] or "신규") == kind]
         if part:
-            out.append(f"\n■ 신규 개업 · {kind} {len(part)}건\n" + "".join(fmt_line(*r[1:]) for r in part))
+            out.append(section(f"신규 개업 · {kind}", part))
     return head + "".join(out) if out else head + "(해당 없음)"
 
 
@@ -412,7 +425,7 @@ def cmd_signups() -> None:
             continue
         who = (m.get("from") or {})
         label = who.get("username") and "@" + who["username"] or who.get("first_name") or chat
-        regions = re.findall(r"[가-힣]+구", text)
+        regions = re.findall(r"[가-힣]+구|서울", text)      # "서울" 이면 서울 전체
         if chat == OWNER:                                # 운영자 명령: 추가 | 연락처 | 구들 | 이름   /  제거 | 연락처
             parts = [p.strip() for p in text.split("|")]
             if parts[0] == "추가" and len(parts) >= 3 and regions:
