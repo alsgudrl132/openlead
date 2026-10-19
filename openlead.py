@@ -66,17 +66,24 @@ def db() -> sqlite3.Connection:
     return c
 
 
+def ymd(v: str | None) -> str:
+    """'2026-10-16' / '2026-10-16 13:21:52' / '20261016' → '20261016'. 빈값은 ''."""
+    return (v or "")[:10].replace("-", "")
+
+
 def row_of(item: dict) -> tuple:
-    return (item.get("MGT_NO"), item.get("BPLC_NM"), item.get("BSNTPE_NM"),
-            item.get("STTUS_ADDR"), item.get("ROAD_NM_ADDR"), item.get("SITE_TEL"),
-            item.get("LCPMT_YMD"), item.get("SALS_STTS_NM"), item.get("CLSBIZ_YMD"),
-            item.get("LAST_MDFCN_PNT"))
+    # 실제 API 필드명 (2026-10-19 probe 로 확인): MNG_NO, LOTNO_ADDR, TELNO, BZSTAT_SE_NM, DTL_SALS_STTS_NM
+    return (item.get("MNG_NO"), item.get("BPLC_NM"),
+            item.get("BZSTAT_SE_NM") or item.get("SNTTN_BZSTAT_NM"),
+            item.get("LOTNO_ADDR"), item.get("ROAD_NM_ADDR"), item.get("TELNO"),
+            ymd(item.get("LCPMT_YMD")), item.get("DTL_SALS_STTS_NM") or item.get("SALS_STTS_NM"),
+            ymd(item.get("CLSBIZ_YMD")), item.get("LAST_MDFCN_PNT"))
 
 
 def upsert(c: sqlite3.Connection, items: list[dict], today: str) -> int:
     n = 0
     for it in items:
-        if not it.get("MGT_NO"):
+        if not it.get("MNG_NO"):
             continue
         c.execute("""INSERT INTO shops(mgt_no,name,biz_type,addr,road_addr,tel,permit_ymd,status,close_ymd,last_mod,first_seen)
                      VALUES(?,?,?,?,?,?,?,?,?,?,?)
@@ -89,7 +96,7 @@ def upsert(c: sqlite3.Connection, items: list[dict], today: str) -> int:
 
 
 def in_region(item: dict, regions: list[str]) -> bool:
-    text = (item.get("STTUS_ADDR") or "") + " " + (item.get("ROAD_NM_ADDR") or "")
+    text = (item.get("LOTNO_ADDR") or "") + " " + (item.get("ROAD_NM_ADDR") or "")
     return any(r in text for r in regions)
 
 
@@ -122,24 +129,22 @@ def reclassify(c: sqlite3.Connection, since_ymd: str) -> None:
 
 # ---------- 명령 ----------
 def cmd_probe() -> None:
-    """키 받은 뒤 1회: 총건수, 1페이지 정렬 상태, 변경 메타 분포를 찍는다."""
-    p = fetch_page("info", 1, 100)
-    items = p["items"]
-    print("totalCount:", p["total"])
-    print("fields:", sorted(items[0].keys()) if items else "-")
-    mods = [i.get("LAST_MDFCN_PNT") or "" for i in items]
-    print("LAST_MDFCN_PNT first/last on page1:", mods[:1], mods[-1:], "sorted desc?", mods == sorted(mods, reverse=True))
-    print("DAT_UPDT_SE:", {k: mods and sum(1 for i in items if i.get("DAT_UPDT_SE") == k) for k in ("I", "U", "D")})
-    print("permit ymd sample:", [i.get("LCPMT_YMD") for i in items[:5]])
-    # 필터 파라미터 후보를 던져보고 totalCount 가 줄어드는지로 존재 여부를 추정
-    for name, val in (("lastModTsBgn", (date.today() - timedelta(days=3)).strftime("%Y%m%d")),
-                      ("bgnYmd", (date.today() - timedelta(days=3)).strftime("%Y%m%d")),
-                      ("opnAtmyGrpCd", "3000000"), ("sidoNm", "서울특별시")):
-        try:
-            t = fetch_page("info", 1, 1, **{name: val})["total"]
-            print(f"  param {name}={val}: totalCount={t}  {'<-- 필터 동작' if t != p['total'] else '(변화 없음)'}")
-        except Exception as e:  # noqa: BLE001
-            print(f"  param {name}: ERROR {e}")
+    """키 받은 뒤: 페이지별 인허가일·수정시각 범위와 변경구분 분포로 정렬 규칙을 추정한다."""
+    from collections import Counter
+    for page in (1, 2, 3, 5, 10, 20, 50, 100):
+        p = fetch_page("info", page, 100)
+        it = p["items"]
+        if page == 1:
+            print("totalCount:", p["total"])
+            print("fields:", sorted(it[0].keys()) if it else "-")
+        if not it:
+            print(f"page {page}: empty"); continue
+        permits = sorted(ymd(i.get("LCPMT_YMD")) for i in it)
+        mods = sorted((i.get("LAST_MDFCN_PNT") or "") for i in it)
+        upd = sorted((i.get("DAT_UPDT_PNT") or "") for i in it)
+        print(f"page {page}: permit {permits[0]}~{permits[-1]} | lastmod {mods[0][:16]}~{mods[-1][:16]} | updpnt {upd[0][:16]}~{upd[-1][:16]}"
+              f" | SE {dict(Counter(i.get('DAT_UPDT_SE') for i in it))} | status {dict(Counter(i.get('DTL_SALS_STTS_NM') for i in it))}"
+              f" | seoul {sum(1 for i in it if in_region(i, ['서울특별시']))}")
 
 
 def cmd_collect() -> None:
@@ -158,8 +163,8 @@ def cmd_collect() -> None:
         seen += len(p["items"])
         hit = [i for i in p["items"] if in_region(i, regions)]
         kept += upsert(c, hit, today)
-        mods = [i.get("LAST_MDFCN_PNT") or "" for i in p["items"]]
-        if mods and max(mods)[:8] < cutoff:            # 최종수정 내림차순이면 여기서 끊긴다
+        mods = [ymd(i.get("LAST_MDFCN_PNT")) for i in p["items"]]
+        if mods and max(mods) < cutoff:                 # 최신순이면 여기서 끊긴다
             break
     reclassify(c, cutoff)
     c.commit()
