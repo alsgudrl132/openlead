@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: collect | send | send-dry | probe | backfill | signups
+        description: collect | send | send-dry | probe | backfill | signups | test-email
         default: collect
       pages:
         description: backfill 페이지 예산 (기본 9000)

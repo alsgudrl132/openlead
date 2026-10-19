@@ -428,4 +428,6 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows cp949 콘솔 대비
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     {"probe": cmd_probe, "collect": cmd_collect, "backfill": cmd_backfill, "signups": cmd_signups,
+     "test-email": lambda: email(os.environ.get("GMAIL_USER", "alsgudrl132@gmail.com"), "[오픈리드] 이메일 발송 테스트",
+                                 "<p>이 메일이 보이면 Gmail 발송 설정이 끝난 겁니다. 매주 월요일 08:00 리스트가 이 형식으로 갑니다.</p>"),
      "send": lambda: cmd_send("--dry" in sys.argv)}.get(cmd, lambda: print(__doc__))()
