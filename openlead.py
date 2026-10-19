@@ -370,14 +370,15 @@ def build_message(c: sqlite3.Connection, cust: dict, since_ymd: str) -> str:
 
     with_tel = [r for r in closed if (r[6] or "").strip()]
     no_tel = [r for r in closed if not (r[6] or "").strip()]
-    head = (f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 음식점 신고 현황] {', '.join(cust['regions'])}"
-            f" · 폐업 {len(closed)}건 (번호 {len(with_tel)}건) · 신규 {len(rows)}건\n")
+    want_new = bool(cust.get("new"))                     # 신규 개업은 고객이 원할 때만 (기본 꺼짐)
+    head = (f"[{since_ymd[4:6]}/{since_ymd[6:]}~ 폐업 신고 음식점] {', '.join(cust['regions'])}"
+            f" · {len(closed)}건 (전화번호 {len(with_tel)}건)" + (f" · 신규 {len(rows)}건" if want_new else "") + "\n")
     out = []
     if with_tel:
         out.append(section("폐업 · 전화번호 있음", with_tel, closed=True))
     if no_tel:
         out.append(section("폐업 · 주소만 (방문·매물용)", no_tel, closed=True))
-    for kind in ("신규", "명의변경 추정"):
+    for kind in (("신규", "명의변경 추정") if want_new else ()):
         part = [r for r in rows if (r[0] or "신규") == kind]
         if part:
             out.append(section(f"신규 개업 · {kind}", part))
