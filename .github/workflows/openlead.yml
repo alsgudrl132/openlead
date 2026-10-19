@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: collect(=filesync) | filesync | send | send-dry | probe | backfill | signups | test-email | send-seoul-test
+        description: collect(=filesync) | filesync | send | send-dry | probe | backfill | signups | notices | test-email | send-seoul-test
         default: collect
       pages:
         description: backfill 페이지 예산 (기본 9000)
@@ -60,7 +60,7 @@ jobs:
           case "${{ steps.j.outputs.job }}" in
             send-dry) python openlead.py send --dry ;;
             stats)    CUSTOMERS_JSON='[{"name":"seoul","chat_id":"0","regions":["서울특별시"]}]' python openlead.py send --dry | grep -E "^\[|^■" ;;
-            collect)  python openlead.py filesync ;;   # 서울 25개 구 인허가 파일 다운로드 → 신규·폐업 갱신 (API 불필요)
+            collect)  python openlead.py filesync && python openlead.py notices ;;   # 파일 동기화 → 체험 종료/월초 알림
             *)        python openlead.py ${{ steps.j.outputs.job }} ;;
           esac
       - name: save db      # 실패해도 진행분 보존
