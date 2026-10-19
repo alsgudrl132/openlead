@@ -216,10 +216,11 @@ def cmd_backfill() -> None:
         except Exception as e:  # noqa: BLE001  타임아웃·네트워크 → 쉬었다가 같은 페이지 재시도, 연속 6번 실패면 종료
             fails += 1
             print(f"backfill page {page} failed ({fails}): {e}")
-            if fails >= 6:
-                break
             c.commit(); open(state, "w").write(str(page))
-            time.sleep(60 * fails)
+            if fails >= 3:                               # 특정 페이지가 서버 쪽에서 계속 타임아웃(124p 사례) → 건너뜀
+                print(f"backfill page {page} skipped"); page += 1; fails = 0
+                continue
+            time.sleep(30 * fails)
             continue
         if not p["items"]:
             print("backfill cycle done at page", page); page = 1; break   # 한 바퀴 끝 → 처음부터 (폐업 갱신용 주기 스캔)
