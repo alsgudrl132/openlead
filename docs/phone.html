@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가게 전화번호 찾기</title>
+<!-- ponytail: 프로토타입 스타일. 디자인은 시안 확정 후 교체 -->
+<style>
+  body{font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;margin:0;padding:16px;max-width:640px;margin:auto;color:#222}
+  form{display:flex;gap:8px}
+  input{flex:1;font-size:16px;padding:10px;border:1px solid #bbb;border-radius:6px}
+  button{font-size:16px;padding:10px 14px;border:0;border-radius:6px;background:#222;color:#fff}
+  ul{list-style:none;padding:0}
+  li{padding:12px 0;border-bottom:1px solid #eee}
+  .name{font-weight:600}
+  .addr{color:#666;font-size:14px}
+  .tel{font-size:18px;margin-top:4px}
+  .tel a{color:#0a58ca;text-decoration:none}
+  .muted{color:#888;font-size:14px}
+  .src{margin-top:24px;font-size:12px;color:#999}
+</style>
+</head>
+<body>
+<h1 style="font-size:20px">가게 전화번호 찾기</h1>
+<form id="f">
+  <input id="q" placeholder="상호 + 동 (예: 옥된장 역삼동)" autofocus>
+  <button>검색</button>
+</form>
+<p id="msg" class="muted"></p>
+<ul id="out"></ul>
+<p class="src">검색 결과 제공: 카카오 (실시간 조회, 저장하지 않음)</p>
+
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=KAKAO_JS_KEY&libraries=services&autoload=false"></script>
+<script>
+(function () {
+  var q = document.getElementById('q'), out = document.getElementById('out'), msg = document.getElementById('msg');
+  var params = new URLSearchParams(location.search);
+  if (params.get('q')) q.value = params.get('q');
+
+  function naver(s) { return 'https://map.naver.com/p/search/' + encodeURIComponent(s); }
+
+  function render(items, query) {
+    out.innerHTML = '';
+    if (!items.length) {
+      msg.innerHTML = '카카오맵에 아직 등록되지 않은 가게입니다. 개업 2~3주 뒤 다시 조회해 보세요. '
+        + '<a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>';
+      return;
+    }
+    msg.textContent = items.length + '건';
+    items.forEach(function (p) {
+      var li = document.createElement('li');
+      li.innerHTML = '<div class="name">' + esc(p.place_name) + ' <span class="muted">' + esc((p.category_name || '').split('>').pop().trim()) + '</span></div>'
+        + '<div class="addr">' + esc(p.road_address_name || p.address_name) + '</div>'
+        + '<div class="tel">' + (p.phone ? '<a href="tel:' + esc(p.phone) + '">' + esc(p.phone) + '</a>' : '<span class="muted">전화번호 미등록</span>') + '</div>'
+        + '<div class="muted"><a href="' + esc(p.place_url) + '" target="_blank">카카오맵</a> · <a href="' + naver(p.place_name) + '" target="_blank">네이버 지도</a></div>';
+      out.appendChild(li);
+    });
+  }
+  function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function search() {
+    var query = q.value.trim();
+    if (!query) return;
+    msg.textContent = '검색 중…';
+    if (!window.kakao || !kakao.maps) { msg.innerHTML = '검색 서비스를 불러오지 못했습니다. <a href="' + naver(query) + '" target="_blank">네이버 지도에서 찾기</a>'; return; }
+    kakao.maps.load(function () {
+      new kakao.maps.services.Places().keywordSearch(query, function (data, status) {
+        render(status === kakao.maps.services.Status.OK ? data : [], query);
+      }, { size: 10 });
+    });
+  }
+  document.getElementById('f').addEventListener('submit', function (e) { e.preventDefault(); search(); });
+  if (q.value) search();
+})();
+</script>
+</body>
+</html>
